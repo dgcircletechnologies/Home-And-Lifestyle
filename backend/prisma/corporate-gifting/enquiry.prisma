@@ -1,0 +1,25 @@
+model CorporateEnquiry {
+  id                   String    @id @default(uuid())
+  companyName          String?
+  contactName          String
+  email                String
+  phone                String
+  quantity             Int
+  productId            String?
+  categoryId           String?
+  interestDescription  String?
+  customisation        String?
+  personalMessage      String?
+  brandingInstructions String?
+  quotationRequested   Boolean
+  // No default queue workflow until routing/statuses are agreed.
+  status               String
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  product              Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  category             Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([productId])
+  @@index([categoryId])
+}

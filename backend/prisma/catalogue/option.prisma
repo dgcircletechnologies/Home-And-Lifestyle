@@ -1,0 +1,42 @@
+model ProductOption {
+  id        String               @id @default(uuid())
+  productId String
+  name      String
+  key       String
+  position  Int                  @default(0)
+  product   Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+  values    ProductOptionValue[]
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  @@unique([productId, key])
+  @@unique([id, productId])
+}
+
+model ProductOptionValue {
+  id         String                   @id @default(uuid())
+  optionId   String
+  productId  String
+  label      String
+  key        String
+  position   Int                      @default(0)
+  option     ProductOption            @relation(fields: [optionId, productId], references: [id, productId], onDelete: Restrict)
+  selections VariantOptionSelection[]
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+
+  @@unique([optionId, key])
+  @@unique([id, optionId, productId])
+}
+
+model VariantOptionSelection {
+  variantId String
+  productId String
+  optionId  String
+  valueId   String
+  variant   ProductVariant     @relation(fields: [variantId, productId], references: [id, productId], onDelete: Cascade)
+  value     ProductOptionValue @relation(fields: [valueId, optionId, productId], references: [id, optionId, productId], onDelete: Restrict)
+
+  @@id([variantId, optionId])
+  @@index([valueId, optionId, productId])
+}

@@ -1,0 +1,78 @@
+model PinCodeServiceability {
+  pinCode         String   @id
+  supported       Boolean
+  reason          String?
+  dispatchMinDays Int?
+  dispatchMaxDays Int?
+  deliveryMinDays Int?
+  deliveryMaxDays Int?
+  updatedAt       DateTime @updatedAt
+}
+
+// Optional selectors are conjunctive. Multiple matching rules require an approved resolver.
+// No rule is enabled by default; null selectors/charges do not imply free delivery.
+model ShippingRule {
+  minLengthMm                Int?
+  minWidthMm                 Int?
+  minHeightMm                Int?
+  id                         String    @id @default(uuid())
+  name                       String
+  enabled                    Boolean   @default(false)
+  pinCode                    String?
+  state                      String?
+  productId                  String?
+  categoryId                 String?
+  minWeightGrams             Int?
+  maxWeightGrams             Int?
+  maxLengthMm                Int?
+  maxWidthMm                 Int?
+  maxHeightMm                Int?
+  baseChargePaise            Int?
+  fragileChargePaise         Int?
+  bulkyChargePaise           Int?
+  freeShippingThresholdPaise Int?
+  shippingIncluded           Boolean?
+  freeShipping               Boolean?
+  dispatchMinDays            Int?
+  dispatchMaxDays            Int?
+  deliveryMinDays            Int?
+  deliveryMaxDays            Int?
+  product                    Product?  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  category                   Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([pinCode, enabled])
+  @@index([productId])
+  @@index([categoryId])
+}
+
+// Supports a single shipment today or multiple after explicit operational approval.
+model Shipment {
+  id                  String         @id @default(uuid())
+  orderId             String
+  carrier             String?
+  trackingNumber      String?
+  trackingUrl         String?
+  status              String
+  dispatchedAt        DateTime?
+  estimatedDeliveryAt DateTime?
+  deliveredAt         DateTime?
+  order               Order          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  lines               ShipmentLine[]
+
+  @@unique([id, orderId])
+  @@index([orderId])
+  @@index([carrier, trackingNumber])
+}
+
+model ShipmentLine {
+  shipmentId  String
+  orderLineId String
+  orderId     String
+  quantity    Int
+  shipment    Shipment  @relation(fields: [shipmentId, orderId], references: [id, orderId], onDelete: Restrict)
+  line        OrderLine @relation(fields: [orderLineId, orderId], references: [id, orderId], onDelete: Restrict)
+
+  @@id([shipmentId, orderLineId])
+  @@index([orderLineId, orderId])
+  @@index([shipmentId, orderId])
+}

@@ -1,0 +1,69 @@
+// Provider scope includes merchant account/environment to prevent cross-account collisions.
+model PaymentAttempt {
+  id                String        @id @default(uuid())
+  orderId           String
+  provider          String
+  providerAccount   String
+  idempotencyKey    String
+  providerPaymentId String?
+  providerOrderId   String?
+  amountPaise       Int
+  currency          String        @default("INR")
+  status            PaymentStatus @default(PENDING)
+  failureCode       String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  refunds           Refund[]
+
+  @@unique([provider, providerAccount, idempotencyKey])
+  @@unique([provider, providerAccount, providerPaymentId])
+  @@unique([id, provider, providerAccount])
+  @@index([provider, providerAccount, providerOrderId])
+  @@index([orderId, status])
+}
+
+// Persist verified webhook receipts atomically with their business effects.
+model PaymentEvent {
+  id              String    @id @default(uuid())
+  provider        String
+  providerAccount String
+  providerEventId String
+  payload         Json
+  receivedAt      DateTime  @default(now())
+  processedAt     DateTime?
+  processingError String?
+
+  @@unique([provider, providerAccount, providerEventId])
+  @@index([processedAt, receivedAt])
+}
+
+model Refund {
+  id                 String         @id @default(uuid())
+  paymentId          String
+  provider           String
+  providerAccount    String
+  idempotencyKey     String
+  providerRefundId   String?
+  amountPaise        Int
+  status             PaymentStatus  @default(PENDING)
+  reason             String?
+  // Immutable line/quantity/discount allocation detail after policy approval.
+  allocationSnapshot Json?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  payment            PaymentAttempt @relation(fields: [paymentId, provider, providerAccount], references: [id, provider, providerAccount], onDelete: Restrict)
+
+  @@unique([provider, providerAccount, idempotencyKey])
+  @@unique([provider, providerAccount, providerRefundId])
+  @@index([paymentId, provider, providerAccount])
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}

@@ -1,0 +1,30 @@
+// Identity-provider and staff authorisation policy are deliberately not prescribed here.
+model Customer {
+  id        String            @id @default(uuid())
+  email     String?           @unique
+  phone     String?
+  name      String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  addresses CustomerAddress[]
+  carts     Cart[]
+  wishlists Wishlist[]
+  orders    Order[]
+  reviews   Review[]
+}
+
+model CustomerAddress {
+  id          String   @id @default(uuid())
+  customerId  String
+  recipient   String
+  phone       String
+  line1       String
+  line2       String?
+  city        String
+  state       String
+  pinCode     String
+  countryCode String   @default("IN")
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+}

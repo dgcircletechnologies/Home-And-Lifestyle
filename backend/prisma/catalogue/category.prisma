@@ -1,0 +1,29 @@
+model Category {
+  couponEligibility CouponCategory[]
+  shippingRules     ShippingRule[]
+  enquiries         CorporateEnquiry[]
+  promotions        Promotion[]
+
+  id          String            @id @default(uuid())
+  name        String
+  slug        String            @unique
+  description String?
+  parentId    String?
+  parent      Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children    Category[]        @relation("CategoryHierarchy")
+  products    ProductCategory[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([parentId])
+}
+
+model ProductCategory {
+  productId  String
+  categoryId String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([productId, categoryId])
+  @@index([categoryId])
+}

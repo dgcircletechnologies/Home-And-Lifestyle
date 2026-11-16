@@ -1,0 +1,29 @@
+// Typed numeric values carry a unit; text values support room/style/colour/material facets.
+model ProductAttribute {
+  id           String   @id @default(uuid())
+  productId    String
+  key          String
+  textValue    String?
+  numericValue Decimal? @db.Decimal(18, 6)
+  unit         String?
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([key, textValue])
+  @@index([key, numericValue])
+  @@index([productId])
+}
+
+model ProductCustomisation {
+  id            String  @id @default(uuid())
+  productId     String
+  key           String
+  label         String
+  inputType     String
+  required      Boolean @default(false)
+  // Versioned validation/options contract, enforced by the owning application.
+  configuration Json
+  position      Int     @default(0)
+  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, key])
+}

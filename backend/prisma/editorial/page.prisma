@@ -1,0 +1,31 @@
+// Pages, campaigns, mood edits and Shop the Look share a managed content owner.
+model EditorialPage {
+  id             String             @id @default(uuid())
+  slug           String             @unique
+  title          String
+  kind           String
+  content        Json
+  publishedAt    DateTime?
+  seoTitle       String?
+  seoDescription String?
+  canonicalUrl   String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  products       EditorialProduct[]
+
+  @@index([kind, publishedAt])
+}
+
+model EditorialProduct {
+  pageId    String
+  productId String
+  position  Int           @default(0)
+  // Optional normalised image coordinates; linked product provides non-pointer navigation.
+  hotspotX  Decimal?      @db.Decimal(5, 4)
+  hotspotY  Decimal?      @db.Decimal(5, 4)
+  page      EditorialPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  product   Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@id([pageId, productId])
+  @@index([productId])
+}

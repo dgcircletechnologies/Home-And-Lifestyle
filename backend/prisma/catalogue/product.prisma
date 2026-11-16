@@ -1,0 +1,77 @@
+enum ProductStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Product {
+  story                    String?
+  careInstructions         String?
+  materials                String[]               @default([])
+  dimensions               Json?
+  seoTitle                 String?
+  seoDescription           String?
+  canonicalUrl             String?
+  giftWrapEligible         Boolean                @default(false)
+  attributes               ProductAttribute[]
+  customisationDefinitions ProductCustomisation[]
+  reviews                  Review[]
+  wishlistItems            WishlistItem[]
+  couponEligibility        CouponProduct[]
+  shippingRules            ShippingRule[]
+  editorialLinks           EditorialProduct[]
+  enquiries                CorporateEnquiry[]
+  promotions               Promotion[]
+
+  id          String              @id @default(uuid())
+  name        String
+  slug        String              @unique
+  description String
+  status      ProductStatus       @default(DRAFT)
+  isFeatured  Boolean             @default(false)
+  categories  ProductCategory[]
+  collections ProductCollection[]
+  tags        ProductTag[]
+  variants    ProductVariant[]
+  options     ProductOption[]
+  images      ProductImage[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([status, isFeatured])
+}
+
+model ProductVariant {
+  // Existing pricePaise remains the selling price; compareAtPricePaise is display-only.
+  compareAtPricePaise Int?
+  dimensions          Json?
+  packedLengthMm      Int?
+  packedWidthMm       Int?
+  packedHeightMm      Int?
+  packedWeightGrams   Int?
+  isFragile           Boolean           @default(false)
+  isBulky             Boolean           @default(false)
+  isOneOfAKind        Boolean           @default(false)
+  isLimitedStock      Boolean           @default(false)
+  // A predefined set is a stocked SKU; a bundle references component SKUs below.
+  setPieceCount       Int?
+  bundleComponents    BundleComponent[] @relation("Bundle")
+  componentOf         BundleComponent[] @relation("Component")
+  cartLines           CartLine[]
+  orderLines          OrderLine[]
+
+  id                   String                   @id @default(uuid())
+  productId            String
+  sku                  String                   @unique
+  pricePaise           Int
+  stockQuantity        Int                      @default(0)
+  optionCombinationKey String
+  product              Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  selections           VariantOptionSelection[]
+  images               VariantImage[]
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  @@unique([productId, optionCombinationKey])
+  @@unique([id, productId])
+}

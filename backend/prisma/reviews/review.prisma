@@ -1,0 +1,22 @@
+model Review {
+  id               String           @id @default(uuid())
+  productId        String
+  customerId       String?
+  rating           Int
+  title            String?
+  body             String
+  moderationStatus ModerationStatus @default(PENDING)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  product          Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  customer         Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([productId, moderationStatus, createdAt])
+  @@index([customerId])
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}

@@ -1,0 +1,45 @@
+model Collection {
+  couponEligibility CouponCollection[]
+  startsAt          DateTime?
+  endsAt            DateTime?
+  position          Int                @default(0)
+
+  id          String              @id @default(uuid())
+  name        String
+  slug        String              @unique
+  description String?
+  products    ProductCollection[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+model ProductCollection {
+  position Int @default(0)
+
+  productId    String
+  collectionId String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@id([productId, collectionId])
+  @@index([collectionId])
+}
+
+model Tag {
+  id        String       @id @default(uuid())
+  name      String
+  slug      String       @unique
+  products  ProductTag[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+model ProductTag {
+  productId String
+  tagId     String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([productId, tagId])
+  @@index([tagId])
+}

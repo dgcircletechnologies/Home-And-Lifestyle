@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "typecheck": "npm run prisma:generate && tsc --noEmit",
     "prisma:generate": "prisma generate",
-    "prisma:validate": "prisma validate"
+    "prisma:validate": "prisma validate",
+    "prisma:format": "prisma format",
+    "prisma:test": "node prisma/tests/business-schema.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "12.5.0",

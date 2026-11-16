@@ -1,0 +1,12 @@
+// Stock remains on ProductVariant.stockQuantity; no second source of stock truth.
+// Bundle allocation/reservation policy must be approved before checkout uses components.
+model BundleComponent {
+  bundleVariantId    String
+  componentVariantId String
+  quantity           Int
+  bundle             ProductVariant @relation("Bundle", fields: [bundleVariantId], references: [id], onDelete: Cascade)
+  component          ProductVariant @relation("Component", fields: [componentVariantId], references: [id], onDelete: Restrict)
+
+  @@id([bundleVariantId, componentVariantId])
+  @@index([componentVariantId])
+}
