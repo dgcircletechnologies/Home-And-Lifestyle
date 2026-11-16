@@ -1,0 +1,48 @@
+name: home-lifestyle-decor
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      API_INTERNAL_URL: http://backend:3001
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./frontend/src:/app/src
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Copy .env.example to .env and configure DATABASE_URL}
+      PORT: 3001
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-3001}:3001"
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/api/health',{signal:AbortSignal.timeout(3500)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 4s
+      retries: 5
+      start_period: 30s
+  postgres:
+    image: postgres:17.12-bookworm@sha256:40865bc877a289da75963d97d72b59633f639fc5af7a4e856bfa3714cae5b536
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  postgres_data:
