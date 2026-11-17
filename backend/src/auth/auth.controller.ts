@@ -1,0 +1,54 @@
+import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { AuthService } from './auth.service';
+import { AuthRequest, Public, Roles, sessionCookie } from './access';
+import { authConfig } from './config';
+import { emailBody, loginSchema, parse, registerSchema, tokenBody } from './contracts';
+export function cookieSettings() {
+  const { production } = authConfig();
+  return { name: production ? '__Secure-hl_refresh' : 'hl_refresh', options: { httpOnly: true, secure: production, sameSite: 'lax' as const, path: '/api/auth' } };
+}
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly auth: AuthService) {}
+  @Public() @Post('register') @HttpCode(202)
+  register(@Body() body: unknown) { return this.auth.register(parse(registerSchema, body)); }
+  @Public() @Post('verify-email') @HttpCode(200)
+  verify(@Body() body: unknown) { return this.auth.verifyEmail(parse(tokenBody, body).token); }
+  @Public() @Post('resend-activation') @HttpCode(202)
+  resend(@Body() body: unknown) { return this.auth.resend(parse(emailBody, body).email); }
+  @Public() @Post('login') @HttpCode(200)
+  async login(@Body() body: unknown, @Req() req: AuthRequest, @Res({ passthrough: true }) res: Response) {
+    const input = parse(loginSchema, body);
+    const result = await this.auth.login(input.email, input.password);
+    await this.auth.logout(sessionCookie(req));
+    const cookie = cookieSettings();
+    res.cookie(cookie.name, result.token, { ...cookie.options, expires: result.expiresAt });
+    return { user: result.user, accessToken: result.accessToken, expiresIn: result.expiresIn };
+  }
+  @Public() @Post('refresh') @HttpCode(200)
+  async refresh(@Req() req: AuthRequest, @Res({ passthrough: true }) res: Response) {
+    const result = await this.auth.refresh(sessionCookie(req));
+    const cookie = cookieSettings();
+    res.cookie(cookie.name, result.token, { ...cookie.options, expires: result.expiresAt });
+    return { user: result.user, accessToken: result.accessToken, expiresIn: result.expiresIn };
+  }
+  @Roles('CUSTOMER', 'ADMIN') @Get('me')
+  me(@Req() req: AuthRequest) { return req.user; }
+  @Public() @Post('logout') @HttpCode(204)
+  async logout(@Req() req: AuthRequest, @Res({ passthrough: true }) res: Response) {
+    await this.auth.logout(sessionCookie(req), req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : undefined);
+    const cookie = cookieSettings();
+    res.clearCookie(cookie.name, cookie.options);
+    // Clear obsolete foundation cookies during the transition.
+    res.clearCookie(authConfig().production ? '__Host-hl_session' : 'hl_session', { ...cookie.options, path: '/' });
+  }
+}
+@Controller('account')
+export class AccountController {
+  @Roles('CUSTOMER') @Get() account(@Req() req: AuthRequest) { return req.user; }
+}
+@Controller('admin')
+export class AdminController {
+  @Roles('ADMIN') @Get() admin(@Req() req: AuthRequest) { return req.user; }
+}

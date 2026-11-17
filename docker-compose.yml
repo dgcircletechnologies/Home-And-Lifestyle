@@ -5,9 +5,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     environment:
-      API_INTERNAL_URL: http://backend:3001
+      FRONTEND_PORT: ${FRONTEND_PORT:-5007}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:9007/api}
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-5007}:${FRONTEND_PORT:-5007}"
     volumes:
       - ./frontend/src:/app/src
   backend:
@@ -15,10 +16,30 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: ${DATABASE_URL:?Copy .env.example to .env and configure DATABASE_URL}
-      PORT: 3001
+      DATABASE_URL: ${DOCKER_DATABASE_URL:?Set DOCKER_DATABASE_URL in root .env}
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${BACKEND_PORT:-9007}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5007}
+      STORE_NAME: ${STORE_NAME}
+      FRONTEND_URL: ${FRONTEND_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER}
+      JWT_AUDIENCE: ${JWT_AUDIENCE}
+      JWT_ACCESS_SECONDS: ${JWT_ACCESS_SECONDS}
+      REFRESH_DAYS: ${REFRESH_DAYS}
+      ACTIVATION_HOURS: ${ACTIVATION_HOURS}
+      RESEND_COOLDOWN_SECONDS: ${RESEND_COOLDOWN_SECONDS}
+      RESEND_HOURLY_LIMIT: ${RESEND_HOURLY_LIMIT}
+      LOGIN_ACCOUNT_LIMIT: ${LOGIN_ACCOUNT_LIMIT}
+      AUTH_IP_LIMIT: ${AUTH_IP_LIMIT}
+      SMTP_SECURE: ${SMTP_SECURE}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      MAIL_FROM: ${MAIL_FROM}
+      SMTP_HOST: ${DOCKER_SMTP_HOST}
+      SMTP_PORT: ${DOCKER_SMTP_PORT}
     ports:
-      - "127.0.0.1:${BACKEND_PORT:-3001}:3001"
+      - "127.0.0.1:${BACKEND_PORT:-9007}:${BACKEND_PORT:-9007}"
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
@@ -26,17 +47,26 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/api/health',{signal:AbortSignal.timeout(3500)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:'+process.env.PORT+'/api/health',{signal:AbortSignal.timeout(3500)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 5s
       timeout: 4s
       retries: 5
       start_period: 30s
+  mailpit:
+    image: axllent/mailpit:v1.27.8
+    profiles: ["mail"]
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1027}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8027}:8025"
+
   postgres:
     image: postgres:17.12-bookworm@sha256:40865bc877a289da75963d97d72b59633f639fc5af7a4e856bfa3714cae5b536
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5437}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

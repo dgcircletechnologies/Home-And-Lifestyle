@@ -1,3 +1,11 @@
+## Email activation / JWT update — 17 November 2026
+
+`20261117010000_email_activation_jwt` adds User.emailOriginal/emailVerifiedAt, Session.revokedAt, EmailVerification, RefreshCredential and AuthThrottle. Existing email remains the canonical unique key. The migration refuses case-fold collisions, preserves existing display addresses, normalizes keys and adds a SQL canonical-key CHECK. Existing sessions are revoked; existing users remain unverified. It neither deletes accounts nor resets passwords or commerce data. Email-verification purpose is constrained by a SQL CHECK. Locks/transactions serialize consumption, resend, refresh and account throttling. The local read-only preflight found zero users and zero canonical conflicts. See root README for the current policy; older sections below describe historical foundation behavior.
+
+## Authentication foundation update — 17 November 2026
+
+`auth/user.prisma` adds Role (CUSTOMER, ADMIN), User and Session. User owns normalized unique email, password hash, explicit role, disabled/deleted timestamps and an optional unique Customer relation. Customer gains only the inverse relation (no stored column). Session stores a unique token digest, expiry, user FK and cleanup indexes. The additive `20261117000000_auth_foundation` migration creates these objects inside a transaction; no existing rows are backfilled, linked or promoted. The prior migrations remain unchanged. Credentials are separate from commerce profiles to avoid claiming existing data with unverified email. Runtime workflows and approved scope are documented in the root README and AGENTS.md. The audit below is historical and predates this foundation.
+
 # Prisma schema audit and migration notes
 
 Audit date: 16 November 2026. Current local `main` checkout, including untracked files, is the baseline.

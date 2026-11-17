@@ -9,3 +9,6 @@ coverage/
 *.log
 .DS_Store
 backend/generated/
+
+playwright-report/
+test-results/

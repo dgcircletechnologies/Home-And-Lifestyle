@@ -1,5 +1,6 @@
-// Identity-provider and staff authorisation policy are deliberately not prescribed here.
+// Commerce profile; credentials are owned by auth/User.
 model Customer {
+  user      User?
   id        String            @id @default(uuid())
   email     String?           @unique
   phone     String?

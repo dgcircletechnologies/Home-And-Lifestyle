@@ -1,24 +1,11 @@
+import { authConfig } from './auth/config';
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import { createApp } from './bootstrap';
 import { readEnvironment } from './environment';
-
 async function bootstrap() {
   let port: number;
-  try {
-    ({ port } = readEnvironment());
-  } catch (error) {
-    // Configuration errors contain only fixed messages, never input values.
-    console.error(error instanceof Error ? error.message : 'Invalid API configuration.');
-    process.exitCode = 1;
-    return;
-  }
-  const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('api');
-  app.enableShutdownHooks();
+  try { ({ port } = readEnvironment()); authConfig(); } catch (error) { console.error(error instanceof Error ? error.message : 'Invalid configuration.'); process.exitCode = 1; return; }
+  const app = await createApp();
   await app.listen(port, '0.0.0.0');
 }
-void bootstrap().catch(() => {
-  console.error('API startup failed. Check configuration and port availability.');
-  process.exitCode = 1;
-});
+void bootstrap().catch(() => { console.error('API startup failed. Verify environment configuration and service availability.'); process.exitCode = 1; });
