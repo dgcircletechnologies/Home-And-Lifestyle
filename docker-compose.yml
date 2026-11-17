@@ -11,6 +11,7 @@ services:
       - "127.0.0.1:${FRONTEND_PORT:-5007}:${FRONTEND_PORT:-5007}"
     volumes:
       - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
   backend:
     build:
       context: ./backend

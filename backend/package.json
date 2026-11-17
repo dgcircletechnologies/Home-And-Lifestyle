@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "npm run prisma:generate && nest start --watch",
-    "build": "npm run prisma:generate && nest build",
+    "build": "npm run prisma:generate && nest build && cp -R generated dist/generated",
     "start": "node dist/src/main.js",
     "lint": "eslint .",
     "typecheck": "npm run prisma:generate && tsc --noEmit",
@@ -13,6 +13,8 @@
     "prisma:format": "prisma format",
     "prisma:test": "node prisma/tests/business-schema.test.mjs",
     "admin:create": "node dist/src/admin-bootstrap.js",
+    "seed:admin": "npm run build && node dist/src/admin-bootstrap.js",
+    "seed:demo": "npm run build && node dist/src/dev-seed.js",
     "test": "npm run build && node --test tests/*.test.cjs",
     "prisma:test:auth": "node prisma/tests/auth-upgrade.test.mjs"
   },

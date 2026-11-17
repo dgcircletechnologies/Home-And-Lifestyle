@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { AuthRequest, Public, Roles, sessionCookie } from './access';
 import { authConfig } from './config';
+import { PrismaService } from '../prisma.service';
 import { emailBody, loginSchema, parse, registerSchema, tokenBody } from './contracts';
 export function cookieSettings() {
   const { production } = authConfig();
@@ -50,5 +51,14 @@ export class AccountController {
 }
 @Controller('admin')
 export class AdminController {
+  constructor(private readonly db: PrismaService) {}
   @Roles('ADMIN') @Get() admin(@Req() req: AuthRequest) { return req.user; }
+  @Roles('ADMIN') @Get('dashboard')
+  async dashboard() {
+    const [products, categories, customers, recentProducts] = await Promise.all([
+      this.db.product.count(), this.db.category.count(), this.db.customer.count(),
+      this.db.product.findMany({ take: 5, orderBy: { updatedAt: 'desc' }, select: { id: true, name: true, status: true, updatedAt: true, variants: { select: { stockQuantity: true }, take: 1 } } }),
+    ]);
+    return { products, categories, customers, orders: { value: null, label: 'Not seeded' }, recentProducts: recentProducts.map(product => ({ id: product.id, name: product.name, status: product.status, stock: product.variants[0]?.stockQuantity ?? 0, updatedAt: product.updatedAt })) };
+  }
 }

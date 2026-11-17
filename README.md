@@ -35,7 +35,7 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 | `SMTP_USER`, `SMTP_PASSWORD` | Optional together for authenticated SMTP; server-only |
 | `DOCKER_SMTP_HOST`, `DOCKER_SMTP_PORT` | SMTP inside Docker; mailpit:1025 locally; set to provider host/port for real delivery |
 | `MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT` | Local sandbox ports 1027 and 8027 |
-| `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_PASSWORD`, `ADMIN_CONFIRM_VERIFIED` | One-time trusted CLI inputs; never browser variables |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_NAME`, `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_CONFIRM_VERIFIED` | One-time trusted CLI inputs; never browser variables |
 
 Backend startup validates auth configuration. Production SMTP requires TLS (STARTTLS if not implicit TLS). Real provider delivery also requires a sender/domain approved by your provider. No activation-link logging fallback exists. No production email credentials were configured by this task.
 
@@ -113,17 +113,36 @@ Relevant codes: `VALIDATION_ERROR`/`PASSWORD_COMPROMISED`/`ACTIVATION_INVALID` (
 ```sh
 cd backend
 npm run build
-read -r -p 'Admin email: ' ADMIN_EMAIL
-read -r -p 'Admin name: ' ADMIN_NAME
-read -r -s -p 'Admin password: ' ADMIN_PASSWORD
-export ADMIN_EMAIL ADMIN_NAME ADMIN_PASSWORD
+read -r -p 'Admin email: ' SEED_ADMIN_EMAIL
+read -r -p 'Admin name: ' SEED_ADMIN_NAME
+read -r -s -p 'Admin password: ' SEED_ADMIN_PASSWORD
+export SEED_ADMIN_EMAIL SEED_ADMIN_NAME SEED_ADMIN_PASSWORD
 # Set only after the operator has independently confirmed ownership of the address:
-export ADMIN_CONFIRM_VERIFIED=true
+export SEED_ADMIN_CONFIRM_VERIFIED=true
 npm run admin:create
-unset ADMIN_EMAIL ADMIN_NAME ADMIN_PASSWORD ADMIN_CONFIRM_VERIFIED
+unset SEED_ADMIN_EMAIL SEED_ADMIN_NAME SEED_ADMIN_PASSWORD SEED_ADMIN_CONFIRM_VERIFIED
 ```
 
 New administrators are explicitly marked verified by this trusted operator action. An existing active ADMIN is unchanged if already verified; an unverified ADMIN is marked verified only with the explicit confirmation flag, without changing its password. Existing customers, conflicting commerce profiles, disabled/deleted admins are rejected; no silent promotion or reset. For Docker, pass these four variables via `docker compose run --rm -e ... backend ...` after exporting them. No production admin is created automatically. Recovery/social sign-in/MFA are out of scope.
+
+## Development dashboard data
+
+Provisioning and demonstration data are deliberately separate. The trusted admin command accepts `SEED_ADMIN_NAME`, `SEED_ADMIN_EMAIL`, and `SEED_ADMIN_PASSWORD` (the earlier `ADMIN_*` names remain supported for compatibility) and requires `SEED_ADMIN_CONFIRM_VERIFIED=true`. It creates an explicit verified ADMIN once and never resets an existing account.
+
+```sh
+cd backend
+export SEED_ADMIN_NAME='Development Admin'
+export SEED_ADMIN_EMAIL='admin@example.test'
+read -r -s -p 'Admin password: ' SEED_ADMIN_PASSWORD; export SEED_ADMIN_PASSWORD
+export SEED_ADMIN_CONFIRM_VERIFIED=true
+npm run seed:admin
+export SEED_DEMO=true
+npm run seed:demo
+```
+
+`seed:demo` only writes when `NODE_ENV` is development/test, `SEED_DEMO=true`, and the configured database host is local. It creates or skips five demo categories, eight products with stock/SKU/INR paise prices, and six synthetic `example.test` customer profiles. It creates no orders, payments, sessions, passwords, activation emails, or external actions. Re-running it preserves existing data and reports created/skipped counts. The admin dashboard reads products, categories, customers, and recent catalogue records from the API; the Orders card is explicitly marked “Not seeded in demo.”
+
+The repository contains no supplied admin mockup or UI-reference asset. The initial Tailwind layout therefore uses the documented warm-neutral, cobalt, terracotta and editorial-type direction in `AGENTS.md`; replace it against a supplied reference in a later visual pass.
 
 ## Checks
 
