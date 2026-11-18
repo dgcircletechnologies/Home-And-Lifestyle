@@ -25,9 +25,26 @@ model Order {
   shipments             Shipment[]
   adjustments           OrderAdjustment[]
   couponRedemptions     CouponRedemption[]
+  statusHistory         OrderStatusHistory[]
 
   @@index([customerId, createdAt])
   @@index([status, createdAt])
+}
+
+model OrderStatusHistory {
+  id             String   @id @default(uuid())
+  orderId        String
+  adminId        String
+  previousStatus String
+  status         String
+  action         String
+  reason         String?
+  resumedFrom    String?
+  createdAt      DateTime @default(now())
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  admin          User      @relation(fields: [adminId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt])
 }
 
 model OrderLine {

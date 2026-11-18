@@ -67,6 +67,10 @@ Status: discovery baseline, 16 November 2026. Sources: the owner's project brief
 
 ## ENG-01 Schema ownership and repository review
 
+- Promotions administration approval, 18 November 2026 (MKT-01, CAT-01, ENG-01): owner requires automatic product/category discounts, coupon codes, scheduling, pause/end lifecycle, eligibility and combination controls, and an admin-only cart quote. Variant `pricePaise` remains the selling price; `compareAtPricePaise` is display-only. Coupon usage is read from redemption rows. Customer checkout redemption and gateway/payment side effects remain outside this admin phase.
+
+- Admin order operations approval, 18 November 2026 (ORD-01, ADM-01, ENG-01): the owner requires merchant decision states NEW, ACCEPTED, REJECTED and ON_HOLD, followed by PROCESSING, READY_TO_SHIP, SHIPPED and DELIVERED, with pre-dispatch CANCELLED. Holds retain the prior stage; reject, hold and cancel require a reason and actor history. Payment and shipment facts remain independent. Existing checkout, reservation, carrier, return and refund policies remain pending where no writer or integration exists.
+
 - Product administration approval, 18 November 2026 (CAT-01, ADM-01, ENG-01): product price and on-hand stock remain owned by `ProductVariant.pricePaise` and `ProductVariant.stockQuantity`. Admin deletion archives via existing `ProductStatus.ARCHIVED`, preserving order-line snapshots and variant relations. Additive `ProductStockReceipt` rows provide idempotent receipt audit history; no warehouse/location or reservation policy is introduced.
 
 - Category administration approval, 18 November 2026 (CAT-01, ADM-01, ENG-01): “catalog” in the admin request means the existing `Category` entity at `/admin/categories`. Categories now have an additive `ACTIVE`/`INACTIVE` status, soft deletion, and one optional Cloudinary-backed image; existing categories default to active and remain image-less until updated. Deletion is non-destructive and blocked while active relationships include child categories or product assignments. This does not change ProductImage or VariantImage ownership.

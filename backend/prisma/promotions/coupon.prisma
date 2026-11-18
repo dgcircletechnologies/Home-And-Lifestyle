@@ -1,5 +1,8 @@
 model Coupon {
   id                   String             @id @default(uuid())
+  name                 String             @default("")
+  lifecycle            String             @default("DRAFT")
+  scope                String             @default("CART")
   code                 String             @unique
   enabled              Boolean            @default(false)
   kind                 DiscountKind
@@ -18,6 +21,8 @@ model Coupon {
   categories           CouponCategory[]
   collections          CouponCollection[]
   redemptions          CouponRedemption[]
+
+  @@index([lifecycle, enabled, startsAt, expiresAt])
 }
 
 enum DiscountKind {
@@ -58,6 +63,7 @@ model CouponCollection {
 model CouponRedemption {
   id            String   @id @default(uuid())
   couponId      String?
+  customerId    String?
   orderId       String
   codeSnapshot  String
   discountPaise Int
@@ -68,12 +74,14 @@ model CouponRedemption {
 
   @@unique([orderId, codeSnapshot])
   @@index([couponId])
+  @@index([couponId, customerId])
 }
 
 // Timed product/category sale definitions. Resolution and stacking are application policy.
 model Promotion {
   id                 String       @id @default(uuid())
   name               String
+  lifecycle          String       @default("DRAFT")
   enabled            Boolean      @default(false)
   productId          String?
   categoryId         String?
@@ -87,4 +95,5 @@ model Promotion {
 
   @@index([productId, enabled])
   @@index([categoryId, enabled])
+  @@index([lifecycle, enabled, startsAt, endsAt])
 }
