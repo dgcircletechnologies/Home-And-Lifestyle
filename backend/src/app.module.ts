@@ -9,5 +9,12 @@ import { AuthService } from './auth/auth.service';
 import { AccessGuard } from './auth/access';
 import { AuthController, AccountController, AdminController } from './auth/auth.controller';
 import { HealthController } from './health/health.controller';
-@Module({ controllers: [HealthController, AuthController, AccountController, AdminController], providers: [PasswordPolicy, MailService, AccessTokens, PrismaService, UsersService, AuthService, { provide: APP_GUARD, useClass: AccessGuard }] })
+import { AdminCustomersController } from './customers/admin-customers.controller';
+import { AdminCustomersService } from './customers/admin-customers.service';
+import { AdminCategoriesController } from './categories/admin-categories.controller';
+import { AdminCategoriesService } from './categories/admin-categories.service';
+import { CategoryImageService } from './categories/category-image.service';
+import { AdminProductsController } from './products/admin-products.controller';
+import { AdminProductsService } from './products/admin-products.service';
+@Module({ controllers: [HealthController, AuthController, AccountController, AdminController, AdminCustomersController, AdminCategoriesController, AdminProductsController], providers: [PasswordPolicy, MailService, AccessTokens, PrismaService, UsersService, AuthService, AdminCustomersService, AdminCategoriesService, CategoryImageService, AdminProductsService, { provide: APP_GUARD, useClass: AccessGuard }] })
 export class AppModule {}

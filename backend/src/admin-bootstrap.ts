@@ -10,7 +10,7 @@ function configuredAdmin() {
   const password = process.env.SEED_ADMIN_PASSWORD ?? process.env.ADMIN_PASSWORD;
   if (!name || !email || !password) throw Error('Set SEED_ADMIN_NAME, SEED_ADMIN_EMAIL, and SEED_ADMIN_PASSWORD before provisioning an administrator.');
   const parsed = registerSchema.safeParse({ name, email, password });
-  if (!parsed.success) throw Error('Admin seed input is invalid. Use a valid name/email and a 15–128 character password.');
+  if (!parsed.success) throw Error('Admin seed input is invalid. Use a valid name/email and an 8–128 character password.');
   if ((process.env.SEED_ADMIN_CONFIRM_VERIFIED ?? process.env.ADMIN_CONFIRM_VERIFIED) !== 'true') throw Error('Set SEED_ADMIN_CONFIRM_VERIFIED=true to explicitly mark this trusted bootstrap administrator as verified.');
   return parsed.data;
 }

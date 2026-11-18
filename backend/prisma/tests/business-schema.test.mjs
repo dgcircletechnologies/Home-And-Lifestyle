@@ -26,6 +26,10 @@ async function reject(sql, code) {
     INSERT INTO "ProductVariant" (id,"productId",sku,"pricePaise","stockQuantity","optionCombinationKey","updatedAt") VALUES ('v','p','SKU-1',9900,3,'[]',now());`);
   const before = (await db.query('SELECT id,"productId",sku,"pricePaise","stockQuantity","optionCombinationKey","createdAt","updatedAt" FROM "ProductVariant"')).rows;
   await db.query(migration('20261116010000_complete_business_schema'));
+  await db.query(migration('20261118000000_admin_categories'));
+  await db.query(`INSERT INTO "Category" (id,name,slug,"updatedAt") VALUES ('category','Existing category','existing-category',now())`);
+  const category = (await db.query(`SELECT status,"deletedAt","imageUrl" FROM "Category" WHERE id='category'`)).rows[0];
+  assert.equal(category.status, 'ACTIVE'); assert.equal(category.deletedAt, null); assert.equal(category.imageUrl, null);
   assert.deepEqual((await db.query('SELECT id,"productId",sku,"pricePaise","stockQuantity","optionCombinationKey","createdAt","updatedAt" FROM "ProductVariant"')).rows, before);
   await reject(`UPDATE "ProductVariant" SET "stockQuantity"=-1`, '23514');
   await reject(`UPDATE "ProductVariant" SET "packedWeightGrams"=-1`, '23514');

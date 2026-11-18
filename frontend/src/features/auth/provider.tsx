@@ -1,26 +1,57 @@
 "use client";
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '../../lib/api';
-import { authService, clearAuthMemory, startAuthEvents, type User } from './service';
-type State = { status: 'initializing' | 'authenticated' | 'unauthenticated'; user: User | null; error?: string };
-const AuthContext = createContext<(State & { reload: () => void; accept: (user: User) => void; logout: () => Promise<void> }) | null>(null);
+import { authService, clearAuthMemory, onSessionUser, startAuthEvents, type User } from './service';
+
+export type AuthStatus = 'initializing' | 'authenticated' | 'unauthenticated' | 'error';
+type AuthState = { status: AuthStatus; user: User | null; error: string | null };
+type AuthContextValue = AuthState & {
+  isAuthenticated: boolean;
+  login: (credentials: { email: string; password: string }) => Promise<User>;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<User>;
+  retryInitialization: () => void;
+};
+const AuthContext = createContext<AuthContextValue | null>(null);
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<State>({ status: 'initializing', user: null });
-  const [version, setVersion] = useState(0);
-  const generation = useRef(0);
-  const clear = useCallback(() => { clearAuthMemory(); generation.current++; setState({ status: 'unauthenticated', user: null }); }, []);
-  useEffect(() => startAuthEvents(), []);
-  useEffect(() => {
-    const controller = new AbortController();
+  const [state, setState] = useState<AuthState>({ status: 'initializing', user: null, error: null });
+  const generation = useRef(0); const initialization = useRef<Promise<void> | null>(null);
+  const clear = useCallback(() => { generation.current++; clearAuthMemory(); setState({ status: 'unauthenticated', user: null, error: null }); }, []);
+  const initialize = useCallback(() => {
+    if (initialization.current) return initialization.current;
     const current = ++generation.current;
-    authService.initialize().then(user => {
-      if (current === generation.current) setState({ status: 'authenticated', user });
+    setState({ status: 'initializing', user: null, error: null });
+    const task = authService.initialize().then(user => {
+      if (current === generation.current) setState({ status: 'authenticated', user, error: null });
     }).catch(error => {
-      if (!controller.signal.aborted && current === generation.current) setState({ status: error instanceof ApiError && error.status === 401 ? 'unauthenticated' : 'initializing', user: null, error: error.status === 401 ? undefined : error.message });
-    });
-    window.addEventListener('auth:expired', clear);
-    return () => { controller.abort(); window.removeEventListener('auth:expired', clear); };
-  }, [version, clear]);
-  return <AuthContext.Provider value={{ ...state, reload: () => { setState({ status: 'initializing', user: null }); setVersion(v => v + 1); }, accept: user => { generation.current++; setState({ status: 'authenticated', user }); }, logout: async () => { await authService.logout(); clear(); } }}>{children}</AuthContext.Provider>;
+      if (current !== generation.current) return;
+      if (error instanceof ApiError && error.status === 401) setState({ status: 'unauthenticated', user: null, error: null });
+      else setState({ status: 'error', user: null, error: error instanceof Error ? error.message : 'Unable to restore your session. Please try again.' });
+    }).finally(() => { if (initialization.current === task) initialization.current = null; });
+    initialization.current = task;
+    return task;
+  }, []);
+  useEffect(() => {
+    const stopEvents = startAuthEvents();
+    const stopUserListener = onSessionUser(user => { if (generation.current > 0) setState({ status: 'authenticated', user, error: null }); });
+    const expired = () => clear(); window.addEventListener('auth:expired', expired);
+    void initialize();
+    return () => { stopEvents(); stopUserListener(); window.removeEventListener('auth:expired', expired); };
+  }, [clear, initialize]);
+  const login = useCallback(async ({ email, password }: { email: string; password: string }) => {
+    const current = ++generation.current; setState({ status: 'initializing', user: null, error: null });
+    try { const user = await authService.login(email, password); if (current !== generation.current) throw new ApiError(401, 'Session changed.'); setState({ status: 'authenticated', user, error: null }); return user; }
+    catch (error) { if (current === generation.current) setState({ status: 'unauthenticated', user: null, error: null }); throw error; }
+  }, []);
+  const logout = useCallback(async () => { clear(); try { await authService.logout(); } finally { clear(); } }, [clear]);
+  const refreshUser = useCallback(async () => {
+    const current = generation.current;
+    try { const user = await authService.refreshUser(); if (current !== generation.current) throw new ApiError(401, 'Session changed.'); setState({ status: 'authenticated', user, error: null }); return user; }
+    catch (error) { if (error instanceof ApiError && error.status === 401) clear(); throw error; }
+  }, [clear]);
+  const value = useMemo<AuthContextValue>(() => ({ ...state, isAuthenticated: state.status === 'authenticated', login, logout, refreshUser, retryInitialization: () => { void initialize(); } }), [state, login, logout, refreshUser, initialize]);
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
-export function useAuth() { const value = useContext(AuthContext); if (!value) throw Error('AuthProvider missing.'); return value; }
+export function useAuth() { const value = useContext(AuthContext); if (!value) throw Error('useAuth must be used inside AuthProvider.'); return value; }

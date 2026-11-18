@@ -59,6 +59,7 @@ model ProductVariant {
   componentOf         BundleComponent[] @relation("Component")
   cartLines           CartLine[]
   orderLines          OrderLine[]
+  stockReceipts       ProductStockReceipt[]
 
   id                   String                   @id @default(uuid())
   productId            String

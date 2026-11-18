@@ -1,3 +1,8 @@
+enum CategoryStatus {
+  ACTIVE
+  INACTIVE
+}
+
 model Category {
   couponEligibility CouponCategory[]
   shippingRules     ShippingRule[]
@@ -8,14 +13,23 @@ model Category {
   name        String
   slug        String            @unique
   description String?
+  status      CategoryStatus    @default(ACTIVE)
+  imageUrl    String?
+  imagePublicId String?
+  imageFormat String?
+  imageWidth  Int?
+  imageHeight Int?
+  imageResourceType String?
   parentId    String?
   parent      Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children    Category[]        @relation("CategoryHierarchy")
   products    ProductCategory[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+  deletedAt   DateTime?
 
   @@index([parentId])
+  @@index([status, deletedAt, name])
 }
 
 model ProductCategory {

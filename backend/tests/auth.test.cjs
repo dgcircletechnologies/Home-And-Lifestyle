@@ -6,6 +6,7 @@ const { readEnvironment } = require('../dist/src/environment');
 const { authConfig } = require('../dist/src/auth/config');
 const { hashPassword, verifyPassword } = require('../dist/src/auth/password');
 const { PasswordPolicy } = require('../dist/src/auth/password-policy');
+const { registerSchema } = require('../dist/src/auth/contracts');
 
 test('configuration fails safely for invalid database, origins and signing key', () => {
   const original = { ...process.env };
@@ -28,6 +29,14 @@ test('Argon2id hashing preserves spaces and Unicode; compromised password range 
     global.fetch = async () => { throw Error('offline'); };
     await assert.rejects(new PasswordPolicy().assertAllowed(password), error => error.getStatus() === 503);
   } finally { global.fetch = original; }
+});
+
+test('registration accepts eight-character passwords and rejects shorter passwords', () => {
+  const input = { name: 'Eight Character', email: 'eight@example.test' };
+  assert.equal(registerSchema.safeParse({ ...input, password: 'abcdefgh' }).success, true);
+  const result = registerSchema.safeParse({ ...input, password: 'abcdefg' });
+  assert.equal(result.success, false);
+  if (!result.success) assert.match(result.error.issues[0].message, /8–128/);
 });
 
 test('isolated HTTP activation and JWT integration', { skip: !process.env.TEST_DATABASE_URL }, async t => {

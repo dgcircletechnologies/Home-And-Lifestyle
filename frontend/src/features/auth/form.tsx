@@ -18,22 +18,22 @@ export function AuthForm({ register = false }: { register?: boolean }) {
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (lock.current) return; setError(null);
     const form = new FormData(event.currentTarget); const email = String(form.get('email')); const password = String(form.get('password'));
-    if (register && (Array.from(password).length < 15 || Array.from(password).length > 128)) { setError(new ApiError(400, 'Please check your password.', { password: ['Use 15–128 characters. Spaces and Unicode are welcome.'] })); return; }
+    if (register && (Array.from(password).length < 8 || Array.from(password).length > 128)) { setError(new ApiError(400, 'Please check your password.', { password: ['Use 8–128 characters. Spaces and Unicode are welcome.'] })); return; }
     if (register && password !== form.get('confirm')) { setError(new ApiError(400, 'Passwords must match.', { confirm: ['Enter the same password again.'] })); return; }
     lock.current = true; setBusy(true);
     try {
       if (register) { const result = await authService.register(String(form.get('name')), email, password); setRegistered({ email, cooldown: result.resendAfterSeconds }); }
-      else { const user = await authService.login(email, password); auth.accept(user); router.replace(safeReturn(new URLSearchParams(window.location.search).get('returnTo'), user)); }
+      else { const user = await auth.login({ email, password }); router.replace(safeReturn(new URLSearchParams(window.location.search).get('returnTo'), user)); }
     } catch (reason) { setError(reason instanceof ApiError ? reason : new ApiError(0, 'Please try again.')); }
     finally { lock.current = false; setBusy(false); }
   }
   if (registered) return <CheckEmail initialEmail={registered.email} initialCooldown={registered.cooldown} />;
-  const fields = error?.fields ?? {}; const passwordGuidance = 'Use 15–128 characters. Spaces, Unicode and password managers are welcome.';
+  const fields = error?.fields ?? {}; const passwordGuidance = 'Use 8–128 characters. Spaces, Unicode and password managers are welcome.';
   return <AuthShell title={register ? 'Make yourself at home.' : 'Welcome back.'} intro={register ? 'Create your account to begin. We’ll email you an activation link before you sign in.' : 'Sign in to continue making yourself at home.'}>
     <form className="grid gap-5" noValidate onSubmit={submit}>
       {register && <FormField id="name" name="name" label="Full name" type="text" required maxLength={100} autoComplete="name" error={fields.name?.join(' ')} />}
       <FormField id="email" name="email" label="Email address" type="email" required maxLength={254} autoComplete="email" inputMode="email" error={fields.email?.join(' ')} />
-      <PasswordField id="password" name="password" label="Password" required maxLength={256} autoComplete={register ? 'new-password' : 'current-password'} hint={register ? passwordGuidance : undefined} error={fields.password?.join(' ')} />
+      <PasswordField id="password" name="password" label="Password" required minLength={register ? 8 : undefined} maxLength={256} autoComplete={register ? 'new-password' : 'current-password'} hint={register ? passwordGuidance : undefined} error={fields.password?.join(' ')} />
       {register && <PasswordField id="confirm" name="confirm" label="Confirm password" required maxLength={256} autoComplete="new-password" error={fields.confirm?.join(' ')} />}
       {error && <div ref={errorSummary} tabIndex={-1} className="outline-none"><StatusMessage>{error.message}</StatusMessage></div>}
       {error?.code === 'EMAIL_NOT_VERIFIED' && <Link className="-mt-2 text-sm font-semibold text-[var(--hl-primary)]" href="/check-email">Resend activation email</Link>}

@@ -1,0 +1,15 @@
+// Receipts are an append-only audit ledger; ProductVariant.stockQuantity remains the balance source of truth.
+model ProductStockReceipt {
+  id          String         @id @default(uuid())
+  operationId String         @unique
+  variantId   String
+  adminId     String
+  quantity    Int
+  note        String?
+  createdAt   DateTime       @default(now())
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  admin       User           @relation(fields: [adminId], references: [id], onDelete: Restrict)
+
+  @@index([variantId, createdAt])
+  @@index([adminId, createdAt])
+}

@@ -17,6 +17,7 @@ model User {
   customerId         String?             @unique
   customer           Customer?           @relation(fields: [customerId], references: [id], onDelete: Restrict)
   sessions           Session[]
+  stockReceipts      ProductStockReceipt[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 }

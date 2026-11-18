@@ -17,8 +17,9 @@ export function configureRenewal(callback: () => Promise<unknown>) { renew = cal
 type Options = Omit<RequestInit, 'body'> & { body?: unknown; timeoutMs?: number; quiet401?: boolean };
 export async function api<T>(path: string, options: Options = {}, retried = false): Promise<T> {
   const { body, timeoutMs = 10000, quiet401 = false, signal, headers, ...request } = options;
-  if (!/^\/?[a-z][a-z0-9/-]*$/i.test(path)) throw Error('Invalid API endpoint.');
-  const endpoint = path.replace(/^\//, '').replace(/^api\//, '');
+  const [rawPath, rawQuery, ...extra] = path.split('?');
+  if (extra.length || !/^\/?[a-z][a-z0-9/-]*$/i.test(rawPath) || (rawQuery !== undefined && !/^[A-Za-z0-9%=&._-]*$/.test(rawQuery))) throw Error('Invalid API endpoint.');
+  const endpoint = rawPath.replace(/^\//, '').replace(/^api\//, '');
   const multipart = typeof FormData !== 'undefined' && body instanceof FormData;
   const requestHeaders = new Headers(headers);
   requestHeaders.set('X-CSRF-Protection', '1');
@@ -27,7 +28,7 @@ export async function api<T>(path: string, options: Options = {}, retried = fals
   let response: Response;
   let text: string;
   try {
-    response = await fetch(`${apiBase()}/${endpoint}`, { ...request, headers: requestHeaders, body: body === undefined ? undefined : multipart ? body as FormData : JSON.stringify(body), credentials: 'include', cache: 'no-store', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) });
+    response = await fetch(`${apiBase()}/${endpoint}${rawQuery !== undefined ? `?${rawQuery}` : ''}`, { ...request, headers: requestHeaders, body: body === undefined ? undefined : multipart ? body as FormData : JSON.stringify(body), credentials: 'include', cache: 'no-store', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) });
     text = await response.text();
   } catch {
     throw new ApiError(0, signal?.aborted ? 'Request cancelled.' : 'Unable to connect. Check your connection and try again.');

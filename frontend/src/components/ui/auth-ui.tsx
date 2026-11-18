@@ -22,11 +22,12 @@ export function FormField({ label, hint, error, id, className = '', ...props }: 
 export function PasswordField({ label, hint, error, id, ...props }: FieldProps) {
   const [visible, setVisible] = useState(false);
   const descriptionId = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
+  const toggleLabel = id === 'confirm' ? 'confirmation' : label.toLowerCase();
   return <div className="grid gap-2">
     <label className="text-sm font-semibold text-[var(--hl-ink)]" htmlFor={id}>{label}</label>
     <div className="relative">
       <input id={id} className={`hl-input pr-12 ${error ? 'border-[var(--hl-error)]' : ''}`} type={visible ? 'text' : 'password'} aria-invalid={Boolean(error)} aria-describedby={descriptionId} {...props} />
-      <button type="button" className="absolute inset-y-0 right-0 grid w-12 place-items-center text-[var(--hl-muted)] transition hover:text-[var(--hl-ink)] focus-visible:outline-none" onClick={() => setVisible(value => !value)} aria-label={visible ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`} aria-pressed={visible}>
+      <button type="button" className="absolute inset-y-0 right-0 grid w-12 place-items-center text-[var(--hl-muted)] transition hover:text-[var(--hl-ink)] focus-visible:outline-none" onClick={() => setVisible(value => !value)} aria-label={visible ? `Hide ${toggleLabel}` : `Show ${toggleLabel}`} aria-pressed={visible}>
         {visible ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
       </button>
     </div>

@@ -64,7 +64,7 @@ For host development, run `npm ci` in each app; start only PostgreSQL/Mailpit vi
 
 ## Verify the customer flow
 
-1. Open `/register`, enter full name, email and a unique 15–128-character password, then confirm it. No phone or address is required.
+1. Open `/register`, enter full name, email and a unique 8–128-character password, then confirm it. No phone or address is required.
 2. The generic acknowledgement offers resend. Registration creates **no session**.
 3. Try `/login` before activation: a correct password yields “Please verify your email before signing in.” A wrong password always yields “Email or password is incorrect.”
 4. Open the email in Mailpit. Its link uses `/activate#token=…`; opening it alone changes nothing. The page removes the fragment from visible history and requires an explicit **Verify email** POST, protecting links from mail scanners/prefetchers. It uses `Referrer-Policy: no-referrer`, has no third-party analytics, and holds the secret only in temporary memory.
@@ -72,7 +72,7 @@ For host development, run `npm ci` in each app; start only PostgreSQL/Mailpit vi
 6. Sign in, visit `/account`, reload, and try `/admin` as a customer (denied). Logout clears local auth, notifies other tabs and immediately revokes the server session. Other devices remain signed in.
 7. Used/expired/invalid links offer resend. Resend uses generic responses, server-enforced limits and a frontend countdown; use the latest email. A duplicate registration never changes the existing account or invalidates its link.
 
-Password policy supports spaces, Unicode, paste and password managers without composition rules or trimming. The limit is 15–128 Unicode code points. New hashes use Argon2id (64 MiB, time cost 3, parallelism 1); legacy scrypt hashes (N=32768, r=8, p=1) are accepted and upgraded only after an eligible successful login. HIBP Pwned Passwords range checks disclose only the first five SHA-1 hex characters with response padding, not the password/full hash. The SHA-1 is only for lookup, not storage. Password-check outages fail closed with a retryable 503; there is no bypass environment flag.
+Password policy supports spaces, Unicode, paste and password managers without composition rules or trimming. The limit is 8–128 Unicode code points. New hashes use Argon2id (64 MiB, time cost 3, parallelism 1); legacy scrypt hashes (N=32768, r=8, p=1) are accepted and upgraded only after an eligible successful login. HIBP Pwned Passwords range checks disclose only the first five SHA-1 hex characters with response padding, not the password/full hash. The SHA-1 is only for lookup, not storage. Password-check outages fail closed with a retryable 503; there is no bypass environment flag.
 
 Email uses trimmed original spelling for display/delivery and a trimmed, lowercase whole-address key for lookup/uniqueness. Dots and plus suffixes are preserved. The migration inspects conflicts before normalizing existing keys; historical casing already discarded by the foundation cannot be recovered. No existing commerce profile is automatically attached to a new identity.
 
