@@ -6,6 +6,13 @@ model Review {
   title            String?
   body             String
   moderationStatus ModerationStatus @default(PENDING)
+  moderationVersion Int           @default(0)
+  moderationReason String?
+  trashedAt        DateTime?
+  storeReply       String?
+  repliedAt        DateTime?
+  repliedById      String?
+  history          ReviewModerationHistory[]
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   product          Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
@@ -13,10 +20,27 @@ model Review {
 
   @@index([productId, moderationStatus, createdAt])
   @@index([customerId])
+  @@index([moderationStatus, trashedAt, createdAt, id])
+}
+
+model ReviewModerationHistory {
+  id             String   @id @default(uuid())
+  reviewId       String
+  adminId        String
+  action         String
+  previousStatus String
+  status         String
+  reason         String?
+  createdAt      DateTime @default(now())
+  review         Review   @relation(fields: [reviewId], references: [id], onDelete: Restrict)
+  admin          User     @relation(fields: [adminId], references: [id], onDelete: Restrict)
+
+  @@index([reviewId, createdAt])
 }
 
 enum ModerationStatus {
   PENDING
   APPROVED
   REJECTED
+  SPAM
 }

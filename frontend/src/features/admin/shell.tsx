@@ -6,11 +6,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../auth/provider';
 import { adminNavigation } from './navigation';
+import { Avatar } from '../../components/avatar';
 
 const titleFor = (path: string) => {
   if (path === '/admin') return 'Dashboard';
   if (path === '/admin/profile') return 'My Profile';
-  return adminNavigation.find(item => path.startsWith(item.href))?.label ?? 'Administration';
+  return adminNavigation.find(item => item.exact ? path === item.href : path.startsWith(item.href))?.label ?? 'Administration';
 };
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
@@ -65,7 +66,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     <div className="min-w-0">
       <header className="sticky top-0 z-30 flex h-[72px] min-w-0 items-center justify-between border-b border-[var(--hl-border)] bg-[var(--hl-surface)] px-4 sm:px-6 lg:px-8" aria-label="Admin toolbar">
         <div className="flex min-w-0 items-center gap-3"><button ref={trigger} type="button" aria-label="Open navigation" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)} className="grid size-10 shrink-0 place-items-center rounded-[var(--hl-radius-sm)] text-[var(--hl-ink)] hover:bg-[var(--hl-page)] focus-visible:outline-none lg:hidden"><Menu className="size-5" aria-hidden="true" /></button><p className="truncate text-sm font-semibold text-[var(--hl-ink)] sm:text-base">{pageTitle}</p></div>
-        <div ref={profile} className="relative shrink-0"><button type="button" aria-haspopup="menu" aria-expanded={profileOpen} onClick={() => setProfileOpen(value => !value)} className="flex min-h-10 items-center gap-2 rounded-[var(--hl-radius-sm)] px-1.5 text-left hover:bg-[var(--hl-page)] focus-visible:outline-none"><span className="grid size-9 place-items-center rounded-full bg-[var(--hl-accent)] text-sm font-bold text-white">{initial}</span><span className="hidden max-w-36 sm:grid"><span className="truncate text-sm font-semibold text-[var(--hl-ink)]">{auth.user?.name}</span><span className="text-xs text-[var(--hl-muted)]">Administrator</span></span><ChevronDown className="hidden size-4 text-[var(--hl-muted)] sm:block" aria-hidden="true" /></button>
+        <div ref={profile} className="relative shrink-0"><button type="button" aria-haspopup="menu" aria-expanded={profileOpen} onClick={() => setProfileOpen(value => !value)} className="flex min-h-10 items-center gap-2 rounded-[var(--hl-radius-sm)] px-1.5 text-left hover:bg-[var(--hl-page)] focus-visible:outline-none"><Avatar name={auth.user?.name ?? initial} url={auth.user?.avatarUrl} /><span className="hidden max-w-36 sm:grid"><span className="truncate text-sm font-semibold text-[var(--hl-ink)]">{auth.user?.name}</span><span className="text-xs text-[var(--hl-muted)]">Administrator</span></span><ChevronDown className="hidden size-4 text-[var(--hl-muted)] sm:block" aria-hidden="true" /></button>
           {profileOpen && <div role="menu" aria-label="Account menu" className="absolute right-0 top-[calc(100%+0.65rem)] z-50 w-72 overflow-hidden rounded-[var(--hl-radius)] border border-[var(--hl-border)] bg-[var(--hl-elevated)] p-1.5 shadow-[var(--hl-shadow-lg)]"><div className="border-b border-[var(--hl-border)] px-3 py-3"><p className="truncate text-sm font-semibold text-[var(--hl-ink)]">{auth.user?.name}</p><p className="truncate text-xs text-[var(--hl-muted)]">{auth.user?.email}</p></div><Link role="menuitem" href="/admin/profile" onClick={closeProfile} className="mt-1 flex min-h-10 items-center gap-3 rounded-[var(--hl-radius-sm)] px-3 text-sm font-medium text-[var(--hl-ink)] no-underline hover:bg-[var(--hl-page)]"><UserRound className="size-4 text-[var(--hl-muted)]" aria-hidden="true" />My Profile</Link><Link role="menuitem" href="/admin/settings" onClick={closeProfile} className="flex min-h-10 items-center gap-3 rounded-[var(--hl-radius-sm)] px-3 text-sm font-medium text-[var(--hl-ink)] no-underline hover:bg-[var(--hl-page)]"><Settings className="size-4 text-[var(--hl-muted)]" aria-hidden="true" />Account Settings</Link><div className="my-1 border-t border-[var(--hl-border)]"/><button role="menuitem" type="button" onClick={logout} className="flex min-h-10 w-full items-center gap-3 rounded-[var(--hl-radius-sm)] px-3 text-sm font-semibold text-[var(--hl-error)] hover:bg-red-50 focus-visible:outline-none"><LogOut className="size-4" aria-hidden="true" />Log out</button></div>}
         </div>
       </header>

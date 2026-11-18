@@ -14,6 +14,9 @@ model User {
   role               Role                @default(CUSTOMER)
   disabledAt         DateTime?
   deletedAt          DateTime?
+  avatarUrl          String?
+  avatarPublicId     String?
+  reviewActions      ReviewModerationHistory[]
   customerId         String?             @unique
   customer           Customer?           @relation(fields: [customerId], references: [id], onDelete: Restrict)
   sessions           Session[]

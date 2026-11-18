@@ -1,6 +1,6 @@
 import { api, ApiError, configureRenewal, getAccessToken, setAccessToken } from '../../lib/api';
 
-export type User = { id: string; name: string; email: string; role: 'CUSTOMER' | 'ADMIN'; emailVerifiedAt?: string };
+export type User = { id: string; name: string; email: string; role: 'CUSTOMER' | 'ADMIN'; emailVerifiedAt?: string; avatarUrl?: string | null };
 type Session = { user: User; accessToken: string; expiresIn: number };
 type SessionListener = (user: User) => void;
 let epoch = 0;

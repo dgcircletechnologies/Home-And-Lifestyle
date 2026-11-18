@@ -1,0 +1,1 @@
+ALTER TABLE "Review" ADD COLUMN "moderationVersion" INTEGER NOT NULL DEFAULT 0;

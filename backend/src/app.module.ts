@@ -20,5 +20,8 @@ import { AdminOrdersController, AdminPaymentsController } from './orders/admin-o
 import { AdminOrdersService } from './orders/admin-orders.service';
 import { AdminPromotionsController } from './promotions/admin-promotions.controller';
 import { AdminPromotionsService } from './promotions/admin-promotions.service';
-@Module({ controllers: [HealthController, AuthController, AccountController, AdminController, AdminCustomersController, AdminCategoriesController, AdminProductsController, AdminOrdersController, AdminPaymentsController, AdminPromotionsController], providers: [PasswordPolicy, MailService, AccessTokens, PrismaService, UsersService, AuthService, AdminCustomersService, AdminCategoriesService, CategoryImageService, AdminProductsService, AdminOrdersService, AdminPromotionsService, { provide: APP_GUARD, useClass: AccessGuard }] })
+import { AdminReviewsController } from './reviews/admin-reviews.controller';
+import { AdminReviewsService } from './reviews/admin-reviews.service';
+import { ProfilePhotoService } from './users/profile-photo.service';
+@Module({ controllers: [HealthController, AuthController, AccountController, AdminController, AdminCustomersController, AdminCategoriesController, AdminProductsController, AdminOrdersController, AdminPaymentsController, AdminPromotionsController, AdminReviewsController], providers: [PasswordPolicy, MailService, AccessTokens, PrismaService, UsersService, AuthService, AdminCustomersService, AdminCategoriesService, CategoryImageService, AdminProductsService, AdminOrdersService, AdminPromotionsService, AdminReviewsService, ProfilePhotoService, { provide: APP_GUARD, useClass: AccessGuard }] })
 export class AppModule {}
