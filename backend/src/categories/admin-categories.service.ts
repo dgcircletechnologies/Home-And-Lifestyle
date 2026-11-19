@@ -1,12 +1,13 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { CategoryStatus, Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma.service';
 import { CategoryImageService } from './category-image.service';
+import { categoryVisibility } from './category-visibility';
 
-type CategoryInput = { name?: string; slug?: string; description?: string | null; parentId?: string | null };
+type CategoryInput = { name?: string; slug?: string; description?: string | null; parentId?: string | null; showInStorefrontNav?: boolean };
 const missing = () => new NotFoundException({ code: 'CATEGORY_NOT_FOUND', message: 'Category not found.' });
 const conflict = (message: string) => new ConflictException({ code: 'CATEGORY_CONFLICT', message });
-const fields = { id: true, name: true, slug: true, description: true, status: true, parentId: true, imageUrl: true, imagePublicId: true, imageFormat: true, imageWidth: true, imageHeight: true, imageResourceType: true, createdAt: true, updatedAt: true } as const;
+const fields = { id: true, name: true, slug: true, description: true, status: true, parentId: true, showInStorefrontNav: true, storefrontNavPosition: true, imageUrl: true, imagePublicId: true, imageFormat: true, imageWidth: true, imageHeight: true, imageResourceType: true, createdAt: true, updatedAt: true } as const;
 const image = (category: { imageUrl: string | null; imagePublicId: string | null; imageFormat: string | null; imageWidth: number | null; imageHeight: number | null; imageResourceType: string | null }) => category.imageUrl ? { url: category.imageUrl, format: category.imageFormat, width: category.imageWidth, height: category.imageHeight, resourceType: category.imageResourceType } : null;
 @Injectable()
 export class AdminCategoriesService {
@@ -26,12 +27,45 @@ export class AdminCategoriesService {
       current = current.parentId ? await this.db.category.findFirst({ where: { id: current.parentId, deletedAt: null }, select: { id: true, parentId: true } }) : null;
     }
   }
-  private data(input: CategoryInput): Prisma.CategoryUncheckedUpdateInput { return { ...(input.name !== undefined ? { name: input.name } : {}), ...(input.slug !== undefined ? { slug: input.slug } : {}), ...(input.description !== undefined ? { description: input.description } : {}), ...(input.parentId !== undefined ? { parentId: input.parentId } : {}) }; }
+  private data(input: CategoryInput): Prisma.CategoryUncheckedUpdateInput { return { ...(input.name !== undefined ? { name: input.name } : {}), ...(input.slug !== undefined ? { slug: input.slug } : {}), ...(input.description !== undefined ? { description: input.description } : {}), ...(input.parentId !== undefined ? { parentId: input.parentId } : {}), ...(input.showInStorefrontNav !== undefined ? { showInStorefrontNav: input.showInStorefrontNav } : {}) }; }
+  async navigation() {
+    const [tree, settings] = await Promise.all([categoryVisibility(this.db), this.db.storeSettings.findUnique({ where: { id: 'store' }, select: { navigationVersion: true } })]);
+    const selected = tree.categories.filter(row => row.showInStorefrontNav && !row.parentId).sort((a,b) => (a.storefrontNavPosition ?? 999999) - (b.storefrontNavPosition ?? 999999) || a.name.localeCompare(b.name));
+    return { version: settings?.navigationVersion ?? 0, items: selected.map(row => ({ id: row.id, name: row.name, slug: row.slug, status: row.status, position: row.storefrontNavPosition, visible: tree.hasProducts(row.id), reason: row.status !== 'ACTIVE' ? 'Hidden from storefront · category inactive' : tree.hasProducts(row.id) ? 'Visible in storefront' : 'Hidden from storefront · no published products' })) };
+  }
+  async navigationOptions(query: { page: number; pageSize: number; search?: string }) {
+    const where: Prisma.CategoryWhereInput = { parentId: null, deletedAt: null, ...(query.search ? { OR: [{ name: { contains: query.search, mode: 'insensitive' } }, { slug: { contains: query.search, mode: 'insensitive' } }] } : {}) };
+    const [total, rows] = await this.db.$transaction([
+      this.db.category.count({ where }),
+      this.db.category.findMany({ where, select: { id: true, name: true, slug: true, status: true, showInStorefrontNav: true }, orderBy: [{ name: 'asc' }, { id: 'asc' }], skip: (query.page - 1) * query.pageSize, take: query.pageSize }),
+    ]);
+    const tree = await categoryVisibility(this.db);
+    return { items: rows.map(row => ({ ...row, visible: tree.hasProducts(row.id), reason: row.status !== 'ACTIVE' ? 'Hidden from storefront · category inactive' : tree.hasProducts(row.id) ? 'Visible in storefront' : 'Hidden from storefront · no published products' })), total, page: query.page, pageSize: query.pageSize };
+  }
+  async saveNavigation(ids: string[], version: number) {
+    await this.db.$transaction(async tx => {
+      await tx.storeSettings.upsert({ where: { id: 'store' }, create: { id: 'store' }, update: {} });
+      const updated = await tx.storeSettings.updateMany({ where: { id: 'store', navigationVersion: version }, data: { navigationVersion: { increment: 1 } } });
+      if (updated.count !== 1) throw conflict('The storefront navbar changed. Reload and review its order.');
+      const eligible = await tx.category.findMany({ where: { id: { in: ids }, parentId: null, deletedAt: null }, select: { id: true } });
+      if (eligible.length !== ids.length) throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Choose existing top-level categories only.', fields: { categoryIds: ['One or more categories were deleted or moved under a parent. Reload the picker and try again.'] } });
+      await tx.category.updateMany({ where: { showInStorefrontNav: true }, data: { showInStorefrontNav: false, storefrontNavPosition: null } });
+      for (let position = 0; position < ids.length; position++) await tx.category.update({ where: { id: ids[position] }, data: { storefrontNavPosition: position } });
+      await tx.category.updateMany({ where: { id: { in: ids } }, data: { showInStorefrontNav: true } });
+    });
+    return this.navigation();
+  }
+  async reorder(ids: string[], version: number) {
+    const current = await this.navigation();
+    if (current.version !== version || current.items.length !== ids.length || ids.some(id => !current.items.some(item => item.id === id))) throw conflict('The storefront navbar selection changed. Reload and review its order.');
+    return this.saveNavigation(ids, version);
+  }
   async list(query: { page: number; pageSize: number; search?: string; status: 'all' | CategoryStatus; sort: 'name' | 'createdAt' | 'updatedAt' }) {
     const where: Prisma.CategoryWhereInput = { deletedAt: null, ...(query.status === 'all' ? {} : { status: query.status }), ...(query.search ? { OR: [{ name: { contains: query.search, mode: 'insensitive' } }, { slug: { contains: query.search, mode: 'insensitive' } }] } : {}) };
     const direction = query.sort === 'name' ? 'asc' as const : 'desc' as const;
     const [total, rows] = await this.db.$transaction([this.db.category.count({ where }), this.db.category.findMany({ where, select: { ...fields, parent: { select: { id: true, name: true } }, _count: { select: { children: { where: { deletedAt: null } }, products: true } } }, orderBy: [{ [query.sort]: direction }, { id: 'asc' }], skip: (query.page - 1) * query.pageSize, take: query.pageSize })]);
-    return { items: rows.map(row => ({ ...row, image: image(row), imageUrl: undefined, imagePublicId: undefined, imageFormat: undefined, imageWidth: undefined, imageHeight: undefined, imageResourceType: undefined })), page: query.page, pageSize: query.pageSize, total };
+    const tree = await categoryVisibility(this.db);
+    return { items: rows.map(row => ({ ...row, navVisibility: row.parentId ? 'Inside parent navigation' : !row.showInStorefrontNav ? 'Not selected' : row.status !== 'ACTIVE' ? 'Selected · inactive' : tree.hasProducts(row.id) ? 'Visible in navbar' : 'Selected · awaiting published products', image: image(row), imageUrl: undefined, imagePublicId: undefined, imageFormat: undefined, imageWidth: undefined, imageHeight: undefined, imageResourceType: undefined })), page: query.page, pageSize: query.pageSize, total };
   }
   async parents(excludeId?: string) {
     const rows = await this.db.category.findMany({ where: { deletedAt: null }, select: { id: true, name: true, parentId: true, status: true }, orderBy: [{ name: 'asc' }, { id: 'asc' }] });
@@ -50,12 +84,13 @@ export class AdminCategoriesService {
   async detail(id: string) { const row = await this.existing(id); return { ...row, image: image(row), imageUrl: undefined, imagePublicId: undefined, imageFormat: undefined, imageWidth: undefined, imageHeight: undefined, imageResourceType: undefined }; }
   async create(input: Required<Pick<CategoryInput, 'name' | 'slug'>> & CategoryInput) {
     await this.validateParent(input.parentId);
-    try { const row = await this.db.category.create({ data: { name: input.name, slug: input.slug, status: 'ACTIVE', ...(input.description !== undefined ? { description: input.description } : {}), ...(input.parentId !== undefined ? { parentId: input.parentId } : {}) }, select: fields }); return { ...row, image: null }; }
+    if (input.showInStorefrontNav && input.parentId) throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Only top-level categories can be selected for navigation.', fields: { showInStorefrontNav: ['Move this category to the top level first.'] } });
+    try { const row = await this.db.$transaction(async tx => { const selected = input.showInStorefrontNav === true; const last = selected ? await tx.category.findFirst({ where: { showInStorefrontNav: true, parentId: null, deletedAt: null }, orderBy: { storefrontNavPosition: 'desc' }, select: { storefrontNavPosition: true } }) : null; const position = selected ? (last?.storefrontNavPosition ?? -1) + 1 : null; const created = await tx.category.create({ data: { name: input.name, slug: input.slug, status: 'ACTIVE', showInStorefrontNav: selected, storefrontNavPosition: position, ...(input.description !== undefined ? { description: input.description } : {}), ...(input.parentId !== undefined ? { parentId: input.parentId } : {}) }, select: fields }); if (selected) await tx.storeSettings.upsert({ where: { id: 'store' }, create: { id: 'store', navigationVersion: 1 }, update: { navigationVersion: { increment: 1 } } }); return created; }); return { ...row, image: null }; }
     catch (error) { if ((error as { code?: string }).code === 'P2002') throw conflict('A category with this slug already exists.'); throw error; }
   }
-  async update(id: string, input: CategoryInput) { await this.existing(id); await this.validateParent(input.parentId, id); try { const row = await this.db.category.update({ where: { id }, data: this.data(input), select: fields }); return { ...row, image: image(row), imageUrl: undefined, imagePublicId: undefined, imageFormat: undefined, imageWidth: undefined, imageHeight: undefined, imageResourceType: undefined }; } catch (error) { if ((error as { code?: string }).code === 'P2002') throw conflict('A category with this slug already exists.'); throw error; } }
+  async update(id: string, input: CategoryInput) { const existing = await this.existing(id); await this.validateParent(input.parentId, id); if (input.showInStorefrontNav && (input.parentId !== undefined ? input.parentId : existing.parentId)) throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Only top-level categories can be selected for navigation.', fields: { showInStorefrontNav: ['Move this category to the top level first.'] } }); try { const row = await this.db.$transaction(async tx => { const selecting = input.showInStorefrontNav === true && !existing.showInStorefrontNav; const movedUnderParent = input.parentId !== undefined && input.parentId !== null; const last = selecting ? await tx.category.findFirst({ where: { showInStorefrontNav: true, parentId: null, deletedAt: null }, orderBy: { storefrontNavPosition: 'desc' }, select: { storefrontNavPosition: true } }) : null; const position = selecting ? (last?.storefrontNavPosition ?? -1) + 1 : undefined; const saved = await tx.category.update({ where: { id }, data: { ...this.data(input), ...(selecting ? { storefrontNavPosition: position } : {}), ...(input.showInStorefrontNav === false || movedUnderParent ? { showInStorefrontNav: false, storefrontNavPosition: null } : {}) }, select: fields }); if (saved.showInStorefrontNav !== existing.showInStorefrontNav || input.parentId !== undefined && input.parentId !== existing.parentId) await tx.storeSettings.upsert({ where: { id: 'store' }, create: { id: 'store', navigationVersion: 1 }, update: { navigationVersion: { increment: 1 } } }); return saved; }); return { ...row, image: image(row), imageUrl: undefined, imagePublicId: undefined, imageFormat: undefined, imageWidth: undefined, imageHeight: undefined, imageResourceType: undefined }; } catch (error) { if ((error as { code?: string }).code === 'P2002') throw conflict('A category with this slug already exists.'); throw error; } }
   async status(id: string, status: CategoryStatus) { await this.existing(id); const row = await this.db.category.update({ where: { id }, data: { status }, select: fields }); return { ...row, image: image(row), imageUrl: undefined, imagePublicId: undefined, imageFormat: undefined, imageWidth: undefined, imageHeight: undefined, imageResourceType: undefined }; }
-  async remove(id: string) { const category = await this.existing(id); if (category._count.children) throw conflict('Move the child categories before deleting this category.'); if (category._count.products) throw conflict('Remove this category from its products before deleting it.'); const row = await this.db.category.update({ where: { id }, data: { deletedAt: new Date() }, select: fields }); return { ...row, image: image(row) }; }
+  async remove(id: string) { const category = await this.existing(id); if (category._count.children) throw conflict('Move the child categories before deleting this category.'); if (category._count.products) throw conflict('Remove this category from its products before deleting it.'); const row = await this.db.$transaction(async tx => { const deleted = await tx.category.update({ where: { id }, data: { deletedAt: new Date(), showInStorefrontNav: false, storefrontNavPosition: null }, select: fields }); if (category.showInStorefrontNav) await tx.storeSettings.upsert({ where: { id: 'store' }, create: { id: 'store', navigationVersion: 1 }, update: { navigationVersion: { increment: 1 } } }); return deleted; }); return { ...row, image: image(row) }; }
   async replaceImage(id: string, file: Express.Multer.File) {
     const category = await this.existing(id); const uploaded = await this.images.upload(file);
     try {

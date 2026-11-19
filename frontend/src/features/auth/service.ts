@@ -62,4 +62,9 @@ export const authService = {
   },
 };
 export function homeFor(user: User) { return user.role === 'ADMIN' ? '/admin' : '/account'; }
-export function safeReturn(value: string | null, user: User) { return value === homeFor(user) ? value : homeFor(user); }
+export function safeReturn(value: string | null, user: User) {
+  if (user.role === 'ADMIN') return homeFor(user);
+  if (!value || !value.startsWith('/') || value.startsWith('//') || /[\\\r\n]/.test(value)) return homeFor(user);
+  if (/^\/(admin|login|register|activate|check-email|access-denied)(\/|\?|$)/.test(value)) return homeFor(user);
+  return value;
+}

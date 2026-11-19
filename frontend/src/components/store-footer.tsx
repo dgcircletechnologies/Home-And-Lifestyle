@@ -1,0 +1,6 @@
+'use client';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { catalog, categoryHref, type StoreCategory } from '../features/store/catalog';
+import { useStoreConfig } from '../features/store/use-store-config';
+export function StoreFooter(){const store=useStoreConfig(),[categories,setCategories]=useState<StoreCategory[]>([]);useEffect(()=>{let live=true;catalog.navigation().then(value=>{if(live)setCategories(value.categories.filter(item=>!item.parentId).slice(0,3))}).catch(()=>{});return()=>{live=false}},[]);return <footer className="store-footer"><div><Link href="/" className="store-footer-brand">{store?.storeName??'Home & Lifestyle'}</Link><p>Objects for the rooms and rituals that feel like yours.</p></div><div><strong>Explore</strong><Link href="/shop">New arrivals</Link>{categories.map(category=><Link key={category.id} href={categoryHref(category)}>{category.name}</Link>)}</div><div><strong>Need a hand?</strong>{store?.supportEmail&&<a href={`mailto:${store.supportEmail}`}>{store.supportEmail}</a>}{store?.supportPhone&&<a href={`tel:${store.supportPhone}`}>{store.supportPhone}</a>}<Link href="/account">Your profile</Link></div><p className="store-footer-bottom">© {new Date().getFullYear()} {store?.storeName??'Home & Lifestyle'} · India · Prices in INR</p></footer>}

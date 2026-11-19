@@ -1,2 +1,4 @@
-import Link from 'next/link';
-export default function Home() { return <section className="hero"><p className="eyebrow">Room for everyday joy</p><h1>A home that feels<br />like you.</h1><p>Thoughtful details. Colourful corners.<br />Our Home & Lifestyle store is taking shape.</p><Link className="button" href="/register">Create your account</Link></section>; }
+import { Homepage } from '../features/store/homepage';
+import type { Metadata } from 'next';
+export const metadata: Metadata = { title: 'Home & Lifestyle | Objects for a home that feels like you', description: 'Explore home décor, lighting, soft furnishings, kitchen and dining pieces from Home & Lifestyle India.' };
+export default function Home() { return <Homepage />; }

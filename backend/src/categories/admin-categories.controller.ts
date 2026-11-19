@@ -7,7 +7,7 @@ import { AdminCategoriesService } from './admin-categories.service';
 
 const id = z.string().uuid();
 const slug = z.string().trim().min(1).max(160).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use lowercase letters, numbers, and hyphens only.');
-const category = z.object({ name: z.string().trim().min(1).max(120), slug, description: z.string().trim().max(5000).nullable().optional(), parentId: id.nullable().optional() }).strict();
+const category = z.object({ name: z.string().trim().min(1).max(120), slug, description: z.string().trim().max(5000).nullable().optional(), parentId: id.nullable().optional(), showInStorefrontNav: z.boolean().optional() }).strict();
 const list = z.object({ page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20), search: z.string().trim().max(100).optional(), status: z.enum(['all', 'ACTIVE', 'INACTIVE']).default('all'), sort: z.enum(['name', 'createdAt', 'updatedAt']).default('name') }).strict();
 const status = z.object({ status: z.enum(['ACTIVE', 'INACTIVE']) }).strict();
 const parents = z.object({ excludeId: id.optional() }).strict();

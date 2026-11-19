@@ -28,6 +28,27 @@ async function main() {
           productCreated++;
         }
       }
+      if (!await tx.tag.findUnique({ where: { slug: 'new-arrival' } })) {
+        const tag = await tx.tag.create({ data: { name: 'New Arrival', slug: 'new-arrival' } });
+        const arrivals = await tx.product.findMany({ where: { slug: { in: ['demo-amber-pleat-lamp', 'demo-cobalt-glass-vase', 'demo-sunday-stripe-cushion'] } }, select: { id: true } });
+        await tx.productTag.createMany({ data: arrivals.map(product => ({ productId: product.id, tagId: tag.id })), skipDuplicates: true });
+      }
+      const editSlug = 'demo-color-stories';
+      if (!await tx.collection.findUnique({ where: { slug: editSlug } })) {
+        const selections = await tx.product.findMany({ where: { slug: { in: ['demo-cobalt-glass-vase', 'demo-sunday-stripe-cushion', 'demo-amber-pleat-lamp'] }, status: 'PUBLISHED' }, select: { id: true, slug: true } });
+        if (selections.length === 3) {
+          const order = ['demo-cobalt-glass-vase', 'demo-sunday-stripe-cushion', 'demo-amber-pleat-lamp'];
+          await tx.collection.create({ data: { name: 'Color Stories', slug: editSlug, description: 'Quiet shapes and vivid accents for a room that feels unmistakably yours.', products: { create: selections.map(row => ({ productId: row.id, position: order.indexOf(row.slug) })) } } });
+        }
+      }
+      const giftSlug = 'demo-giftable-finds';
+      if (!await tx.collection.findUnique({ where: { slug: giftSlug } })) {
+        const selections = await tx.product.findMany({ where: { slug: { in: ['demo-lilac-taper-candle', 'demo-cobalt-glass-vase', 'demo-sunday-stripe-cushion'] }, status: 'PUBLISHED' }, select: { id: true, slug: true } });
+        if (selections.length === 3) {
+          const order = ['demo-lilac-taper-candle', 'demo-cobalt-glass-vase', 'demo-sunday-stripe-cushion'];
+          await tx.collection.create({ data: { name: 'Giftable Finds', slug: giftSlug, description: 'Small gestures and useful favorites to make someone’s day.', position: 1, products: { create: selections.map(row => ({ productId: row.id, position: order.indexOf(row.slug) })) } } });
+        }
+      }
       for (let index = 1; index <= 6; index++) {
         const email = `demo-customer-${index}@example.test`;
         const existing = await tx.customer.findUnique({ where: { email } });

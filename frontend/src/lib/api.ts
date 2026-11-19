@@ -18,7 +18,7 @@ type Options = Omit<RequestInit, 'body'> & { body?: unknown; timeoutMs?: number;
 export async function api<T>(path: string, options: Options = {}, retried = false): Promise<T> {
   const { body, timeoutMs = 10000, quiet401 = false, signal, headers, ...request } = options;
   const [rawPath, rawQuery, ...extra] = path.split('?');
-  if (extra.length || !/^\/?[a-z][a-z0-9/-]*$/i.test(rawPath) || (rawQuery !== undefined && !/^[A-Za-z0-9%=&._-]*$/.test(rawQuery))) throw Error('Invalid API endpoint.');
+  if (extra.length || !/^\/?[a-z][a-z0-9/-]*$/i.test(rawPath) || (rawQuery !== undefined && !/^[A-Za-z0-9%=&._+\-]*$/.test(rawQuery))) throw Error('Invalid API endpoint.');
   const endpoint = rawPath.replace(/^\//, '').replace(/^api\//, '');
   const multipart = typeof FormData !== 'undefined' && body instanceof FormData;
   const requestHeaders = new Headers(headers);

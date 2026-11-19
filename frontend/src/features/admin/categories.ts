@@ -2,9 +2,12 @@ import { api } from '../../lib/api';
 
 export type CategoryStatus = 'ACTIVE' | 'INACTIVE';
 export type CategoryImage = { url: string; format: string | null; width: number | null; height: number | null; resourceType: string } | null;
-export type Category = { id: string; name: string; slug: string; description: string | null; status: CategoryStatus; parentId: string | null; parent?: { id: string; name: string } | null; image: CategoryImage; createdAt: string; updatedAt: string; _count?: { children: number; products: number } };
+export type Category = { id: string; name: string; slug: string; description: string | null; status: CategoryStatus; parentId: string | null; showInStorefrontNav: boolean; storefrontNavPosition: number | null; navVisibility?: string; parent?: { id: string; name: string } | null; image: CategoryImage; createdAt: string; updatedAt: string; _count?: { children: number; products: number } };
 export type CategoryList = { items: Category[]; page: number; pageSize: number; total: number };
-export type CategoryInput = { name: string; slug: string; description?: string | null; parentId?: string | null };
+export type CategoryInput = { name: string; slug: string; description?: string | null; parentId?: string | null; showInStorefrontNav?: boolean };
+export type StorefrontNavOrder = { version: number; items: { id: string; name: string; slug: string; status: CategoryStatus; position: number | null; visible: boolean; reason: string }[] };
+export type StorefrontNavOption = { id: string; name: string; slug: string; status: CategoryStatus; showInStorefrontNav: boolean; visible: boolean; reason: string };
+export type StorefrontNavOptions = { items: StorefrontNavOption[]; total: number; page: number; pageSize: number };
 export type ParentOption = { id: string; name: string; status: CategoryStatus };
 export const categoryService = {
   list: (params: URLSearchParams, signal?: AbortSignal) => api<CategoryList>(`admin/categories?${params}`, { signal }),
@@ -16,4 +19,7 @@ export const categoryService = {
   remove: (id: string) => api<Category>(`admin/categories/${id}`, { method: 'DELETE' }),
   upload: (id: string, image: File) => { const form = new FormData(); form.set('image', image); return api<Category>(`admin/categories/${id}/image`, { method: 'POST', body: form, timeoutMs: 45000 }); },
   removeImage: (id: string) => api<Category>(`admin/categories/${id}/image`, { method: 'DELETE' }),
+  navigation: () => api<StorefrontNavOrder>('admin/categories/storefront-navigation'),
+  navigationOptions: (params: URLSearchParams, signal?: AbortSignal) => api<StorefrontNavOptions>(`admin/categories/storefront-navigation/options?${params}`, { signal }),
+  saveNavigation: (categoryIds: string[], version: number) => api<StorefrontNavOrder>('admin/categories/storefront-navigation', { method: 'PUT', body: { categoryIds, version } }),
 };

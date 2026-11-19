@@ -60,7 +60,7 @@ Mailpit has a `mail` profile and starts when explicitly named. It is a local san
 
 Never reset an existing database or remove its volume. Review `_prisma_migrations`, back up data and reconcile drift before applying migrations. The new activation migration refuses canonical email collisions; resolve any conflicts explicitly rather than merging accounts. It preserves records, adds verification/refresh/throttle storage, leaves existing accounts unverified and revokes legacy opaque sessions. See [schema notes](backend/prisma/README.md).
 
-For host development, run `npm ci` in each app; start only PostgreSQL/Mailpit via Compose, then run `npm run dev` from backend and frontend in separate terminals. Both load root settings; Prisma works directly from `backend/`. Do not simultaneously run host apps and Docker apps on the same ports. Docker images are development/watch images, not production manifests.
+For host development, run `npm ci` in each app; start only PostgreSQL/Mailpit via Compose, then run `npm run dev` from backend and frontend in separate terminals. Both load root settings; Prisma works directly from `backend/`. Do not simultaneously run host apps and Docker apps on the same ports. Docker images are development/watch images, not production manifests. After changing Prisma schema files while the Docker backend is already running, run `docker compose exec backend npm run prisma:generate` and wait for Nest to rebuild (or restart the backend container). The Nest source watcher does not regenerate Prisma types by itself; an old process may continue serving its previous routes when compilation fails.
 
 ## Verify the customer flow
 

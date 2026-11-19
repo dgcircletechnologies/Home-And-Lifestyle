@@ -15,9 +15,9 @@ export function SettingsPage() {
     if(requested===active)return;
     if(dirty){
       // Browser Back can change the URL while a section has an unsaved draft.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPending(requested); router.replace(`/admin/settings?section=${active}`);
     }else{
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActive(requested);
     }
   },[requested,active,dirty,router]);
