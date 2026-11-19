@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PaymentStatus, Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma.service';
+import { period } from '../dashboard/period';
 
 const customer = { select: { name: true, email: true } } as const;
 const paymentFields = { id: true, orderId: true, provider: true, providerPaymentId: true, amountPaise: true, currency: true, status: true, failureCode: true, createdAt: true, updatedAt: true } as const;
@@ -51,10 +52,19 @@ export class AdminOrdersService {
     if (!row) throw new NotFoundException({ code: 'ORDER_NOT_FOUND', message: 'Order not found.' });
     return { id: row.id, orderNumber: row.orderNumber, createdAt: row.createdAt, updatedAt: row.updatedAt, status: row.status, currency: row.currency, email: row.email, phone: row.phone, customerName: row.customer?.name ?? row.email, deliveryAddress: safeAddress(row.deliveryAddress), billingAddress: null, lines: row.lines, subtotalPaise: row.subtotalPaise, discountPaise: row.discountPaise, shippingPaise: row.shippingPaise, taxPaise: row.taxPaise, giftFeePaise: row.giftFeePaise, totalPaise: row.totalPaise, payments: row.payments.map(payment => ({ id: payment.id, provider: payment.provider, reference: payment.providerPaymentId, amountPaise: payment.amountPaise, currency: payment.currency, status: payment.status, failureCode: payment.failureCode, createdAt: payment.createdAt, updatedAt: payment.updatedAt, refunds: payment.refunds })), shipments: row.shipments, adjustments: row.adjustments, history: row.statusHistory, allowedActions: this.next(row.status), receivedPaise: row.payments.filter(payment => payment.status === 'SUCCEEDED' || payment.status === 'PARTIALLY_REFUNDED' || payment.status === 'REFUNDED').reduce((sum, payment) => sum + payment.amountPaise - payment.refunds.filter(refund => refund.status === 'SUCCEEDED').reduce((total, refund) => total + refund.amountPaise, 0), 0) };
   }
-  async listPayments(query: { page: number; pageSize: number; search?: string; status?: PaymentStatus; orderId?: string }) {
-    const where: Prisma.PaymentAttemptWhereInput = { ...(query.status ? { status: query.status } : {}), ...(query.orderId ? { orderId: query.orderId } : {}), ...(query.search ? { OR: [{ providerPaymentId: { contains: query.search, mode: 'insensitive' } }, { order: { orderNumber: { contains: query.search, mode: 'insensitive' } } }] } : {}) };
+  async listPayments(query: { page: number; pageSize: number; search?: string; status?: PaymentStatus; orderId?: string; currency?: 'INR'; range?: ReturnType<typeof period> }) {
+    const where: Prisma.PaymentAttemptWhereInput = { currency: query.currency ?? 'INR', ...(query.status ? { status: query.status } : {}), ...(query.orderId ? { orderId: query.orderId } : {}), ...(query.search ? { OR: [{ providerPaymentId: { contains: query.search, mode: 'insensitive' } }, { order: { orderNumber: { contains: query.search, mode: 'insensitive' } } }] } : {}), ...(query.range ? { AND: [{ OR: [{ updatedAt: { gte: query.range.from, lt: query.range.to } }, { refunds: { some: { status: 'SUCCEEDED', updatedAt: { gte: query.range.from, lt: query.range.to } } } }] }] } : {}) };
     const [total, rows] = await this.db.$transaction([this.db.paymentAttempt.count({ where }), this.db.paymentAttempt.findMany({ where, select: { ...paymentFields, order: { select: { orderNumber: true, email: true, customer: { select: { name: true } } } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (query.page - 1) * query.pageSize, take: query.pageSize })]);
     return { items: rows.map(paymentDto), page: query.page, pageSize: query.pageSize, total };
+  }
+  async paymentSummary(range: ReturnType<typeof period>) {
+    const [captured, pending, refunded] = await Promise.all([
+      this.db.paymentAttempt.aggregate({ where: { currency: 'INR', status: { in: ['SUCCEEDED', 'PARTIALLY_REFUNDED', 'REFUNDED'] }, updatedAt: { gte: range.from, lt: range.to } }, _sum: { amountPaise: true } }),
+      this.db.paymentAttempt.aggregate({ where: { currency: 'INR', status: 'PENDING', updatedAt: { gte: range.from, lt: range.to } }, _sum: { amountPaise: true } }),
+      this.db.refund.aggregate({ where: { payment: { currency: 'INR' }, status: 'SUCCEEDED', updatedAt: { gte: range.from, lt: range.to } }, _sum: { amountPaise: true } }),
+    ]);
+    const capturedPaise = captured._sum.amountPaise ?? 0, pendingPaise = pending._sum.amountPaise ?? 0, refundedPaise = refunded._sum.amountPaise ?? 0;
+    return { currency: 'INR', period: { start: range.start, end: range.end, timezone: range.timezone }, capturedPaise, pendingPaise, refundedPaise, netPaise: capturedPaise - refundedPaise, refreshedAt: new Date().toISOString(), timestampNote: 'Capture and refund completion times are not stored; latest successful record update is used.' };
   }
   async payment(id: string) {
     const row = await this.db.paymentAttempt.findUnique({ where: { id }, select: { ...paymentFields, order: { select: { orderNumber: true, email: true, customer: { select: { name: true } } } }, refunds: { select: { id: true, amountPaise: true, status: true, reason: true, createdAt: true } } } });

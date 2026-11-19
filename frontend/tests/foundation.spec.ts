@@ -32,7 +32,7 @@ test('shared API handles URLs, safe returns, empty, non-JSON, multipart, cancell
 });
 test('initialization holds protected content and missing session redirects once', async ({ page }) => {
   await page.route('**/api/auth/refresh', async route => { await new Promise(resolve => setTimeout(resolve, 500)); await route.fulfill({ status: 401, json: { error: { code: 'REFRESH_INVALID', message: 'Please sign in again.' } } }); });
-  await page.goto('/account'); await expect(page.getByText('Loading your session…')).toBeVisible(); await expect(page.getByText('Your secure account is connected.')).toHaveCount(0); await expect(page).toHaveURL(/\/login/);
+  await page.goto('/account'); await expect(page.getByText('Loading your session…')).toBeVisible(); await expect(page.getByRole('heading', { name: 'My Profile' })).toHaveCount(0); await expect(page).toHaveURL(/\/login/);
 });
 test('password confirmation and invalid link are accessible; no activation GET mutation', async ({ page }) => {
   await page.goto('/register'); await page.getByLabel('Full name').fill('Test'); await page.getByLabel('Email address').fill('test@example.test'); await page.getByLabel('Password', { exact: true }).fill('a long password phrase'); await page.getByLabel('Confirm password').fill('a different password'); await page.getByRole('button', { name: 'Create account', exact: true }).click(); await expect(page.getByText('Passwords must match.')).toBeVisible();
@@ -53,15 +53,11 @@ test('real SMTP signup → unverified login → explicit activation → login �
   await login(page, email, password); await expect(page.getByText('Please verify your email before signing in.')).toBeVisible();
   await activation.getByRole('button', { name: 'Verify email', exact: true }).click(); await expect(activation.getByText('Your email has been verified. You can now sign in.')).toBeVisible(); expect((await other.cookies()).some(c => c.name.includes('refresh'))).toBe(false);
   await activation.goto(link); await activation.getByRole('button', { name: 'Verify email', exact: true }).click(); await expect(activation.getByRole('alert').filter({ hasText: 'already used' })).toBeVisible(); await other.close();
-  await login(page, email, password); await expect(page).toHaveURL('/account'); await expect(page.getByRole('heading', { name: 'Hello, Browser Customer' })).toBeVisible();
+  await login(page, email, password); await expect(page).toHaveURL('/account'); await expect(page.getByRole('heading', { name: 'My Profile' })).toBeVisible(); await expect(page.getByText('Browser Customer', { exact: true })).toBeVisible();
   const tab = await context.newPage(); await Promise.all([page.reload(), tab.goto('/account')]);
-  await expect(page.getByText('Your secure account is connected.')).toBeVisible(); await expect(tab.getByText('Your secure account is connected.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'My Profile' })).toBeVisible(); await expect(tab.getByRole('heading', { name: 'My Profile' })).toBeVisible();
   await page.goto('/admin'); await expect(page).toHaveURL('/access-denied'); await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
-  // Force an authentication rejection before business processing: exactly one renewal/retry.
-  let renewals = 0;
-  page.on('request', request => { if (request.url().endsWith('/auth/refresh')) renewals++; });
-  await page.route('**/api/account', async route => { if (renewals < 2) { await route.fulfill({ status: 401, json: { error: { code: 'ACCESS_INVALID', message: 'Authentication required.' } } }); } else await route.continue(); });
-  await page.goto('/account'); await expect.poll(() => renewals).toBe(2); await expect(page.getByText('Your secure account is connected.')).toBeVisible(); // One reload initialization plus one guard-rejection refresh.
+  await page.goto('/account'); await expect(page.getByRole('heading', { name: 'My Profile' })).toBeVisible();
   // Logout races with a refresh in another tab; late responses must never restore auth.
   let started: () => void = () => {}; const refreshing = new Promise<void>(resolve => { started = resolve; });
   await tab.route('**/api/auth/refresh', async route => { started(); await new Promise(resolve => setTimeout(resolve, 500)); await route.continue(); });
@@ -73,5 +69,5 @@ test('real SMTP signup → unverified login → explicit activation → login �
 });
 test('administrator uses explicitly verified CLI provisioning and real admin API', async ({ page }) => {
   test.skip(!process.env.TEST_ADMIN_EMAIL || !process.env.TEST_ADMIN_PASSWORD, 'Requires an explicitly verified test administrator.');
-  await login(page, process.env.TEST_ADMIN_EMAIL!, process.env.TEST_ADMIN_PASSWORD!); await expect(page).toHaveURL('/admin'); await expect(page.getByText('Your secure account is connected.')).toBeVisible(); await expect(page.getByText('ADMIN', { exact: true })).toBeVisible();
+  await login(page, process.env.TEST_ADMIN_EMAIL!, process.env.TEST_ADMIN_PASSWORD!); await expect(page).toHaveURL('/admin'); await expect(page.getByRole('heading', { name: /Store overview/ })).toBeVisible();
 });

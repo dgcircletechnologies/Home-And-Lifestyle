@@ -1,6 +1,7 @@
 model PinCodeServiceability {
   pinCode         String   @id
   supported       Boolean
+  enabled         Boolean  @default(true)
   reason          String?
   dispatchMinDays Int?
   dispatchMaxDays Int?

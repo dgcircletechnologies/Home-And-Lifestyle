@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma.service';
 import { canonicalEmail } from '../auth/contracts';
 
 const missing = () => new NotFoundException({ code: 'CUSTOMER_NOT_FOUND', message: 'Customer not found.' });
-const safe = (user: { id: string; name: string; email: string; emailOriginal: string | null; emailVerifiedAt: Date | null; disabledAt: Date | null; deletedAt: Date | null; createdAt: Date; updatedAt: Date; customer: { id: string; phone: string | null } | null }) => ({ id: user.id, customerId: user.customer?.id ?? null, name: user.name, email: user.emailOriginal ?? user.email, phone: user.customer?.phone ?? null, verifiedAt: user.emailVerifiedAt, disabledAt: user.disabledAt, deletedAt: user.deletedAt, createdAt: user.createdAt, updatedAt: user.updatedAt });
+const safe = (user: { id: string; name: string; email: string; emailOriginal: string | null; avatarUrl: string | null; emailVerifiedAt: Date | null; disabledAt: Date | null; deletedAt: Date | null; createdAt: Date; updatedAt: Date; customer: { id: string; phone: string | null } | null }) => ({ id: user.id, customerId: user.customer?.id ?? null, name: user.name, email: user.emailOriginal ?? user.email, avatarUrl: user.avatarUrl, phone: user.customer?.phone ?? null, verifiedAt: user.emailVerifiedAt, disabledAt: user.disabledAt, deletedAt: user.deletedAt, createdAt: user.createdAt, updatedAt: user.updatedAt });
 @Injectable()
 export class AdminCustomersService {
   constructor(private readonly db: PrismaService) {}

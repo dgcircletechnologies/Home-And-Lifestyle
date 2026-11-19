@@ -1,0 +1,17 @@
+// One row for the single-brand store. Section versions prevent stale admin saves.
+model StoreSettings {
+  id                       String   @id @default("store")
+  storeName                String   @default("Home & Lifestyle")
+  supportEmail             String?
+  supportPhone             String?
+  storeVersion             Int      @default(0)
+  shippingVersion          Int      @default(0)
+  giftingVersion           Int      @default(0)
+  thresholdBasis           String   @default("AFTER_DISCOUNTS")
+  waiveHandlingOnFree      Boolean  @default(false)
+  giftWrapDefaultEligible  Boolean  @default(false)
+  giftMessagesAvailable    Boolean  @default(false)
+  giftReceiptsAvailable    Boolean  @default(false)
+  giftWrapFeePaise         Int      @default(0)
+  updatedAt                DateTime @updatedAt
+}

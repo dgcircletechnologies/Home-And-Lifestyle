@@ -1,10 +1,11 @@
 "use client";
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../lib/api';
 import { productsService, type Product, type ProductStatus } from './products';
+import { settingsService } from './settings';
 
 type Category = { id: string; name: string; parent: { name: string } | null; status: string };
 const slugify = (name: string) => name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 140) || 'product';
@@ -14,7 +15,7 @@ const cardClass = 'rounded-2xl border border-[var(--hl-border)] bg-[var(--hl-sur
 const errorText = (error: unknown) => error instanceof ApiError ? error.message : 'Something went wrong. Please try again.';
 
 export function ProductEditorPage({ id }: { id?: string }) {
-  const router = useRouter();
+  const router = useRouter(); const listParams = useSearchParams();
   const [product, setProduct] = useState<Product>();
   const [loading, setLoading] = useState(Boolean(id));
   const [loadError, setLoadError] = useState('');
@@ -23,6 +24,7 @@ export function ProductEditorPage({ id }: { id?: string }) {
   const [slugTouched, setSlugTouched] = useState(false);
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<ProductStatus>('DRAFT');
+  const [giftWrapEligible, setGiftWrapEligible] = useState<boolean | undefined>(undefined);
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categorySearch, setCategorySearch] = useState('');
@@ -47,10 +49,12 @@ export function ProductEditorPage({ id }: { id?: string }) {
     productsService.detail(id).then((value) => {
       if (!active) return;
       setProduct(value); setName(value.name); setSlug(value.slug); setDescription(value.description);
-      setStatus(value.status); setCategoryIds(value.categories.map((category) => category.id)); setLoading(false);
+      setStatus(value.status); setGiftWrapEligible(value.giftWrapEligible); setCategoryIds(value.categories.map((category) => category.id)); setLoading(false);
     }).catch((cause) => { if (active) { setLoadError(errorText(cause)); setLoading(false); } });
     return () => { active = false; };
   }, [id]);
+
+  useEffect(() => { if (id) return; let active = true; settingsService.gifting().then(value => { if (active) setGiftWrapEligible(current => current ?? value.giftWrapDefaultEligible); }).catch(() => undefined); return () => { active = false; }; }, [id]);
 
   useEffect(() => {
     let active = true;
@@ -70,15 +74,15 @@ export function ProductEditorPage({ id }: { id?: string }) {
     setBusy(true);
     try {
       const saved = savedId
-        ? await productsService.update(savedId, { name, slug, description, categoryIds })
-        : await productsService.create({ name, slug, description, categoryIds, sku: sku || undefined, pricePaise: Math.round(Number(price) * 100), stockQuantity: Number(stock) });
+        ? await productsService.update(savedId, { name, slug, description, categoryIds, giftWrapEligible })
+        : await productsService.create({ name, slug, description, categoryIds, sku: sku || undefined, pricePaise: Math.round(Number(price) * 100), stockQuantity: Number(stock), giftWrapEligible });
       setSavedId(saved.id);
       if (status !== saved.status) await productsService.status(saved.id, status);
       for (const file of [...files]) {
         try { await productsService.uploadImage(saved.id, file); setFiles((pending) => pending.filter((item) => item !== file)); }
         catch (cause) { setUploadError(`${file.name}: ${errorText(cause)} Product details were saved. Retry the remaining images here.`); return; }
       }
-      router.push(`/admin/products/${saved.id}`);
+      router.push(`/admin/products/${saved.id}?${listParams}`);
       router.refresh();
     } catch (cause) {
       const detail = errorText(cause);
@@ -88,10 +92,10 @@ export function ProductEditorPage({ id }: { id?: string }) {
   };
 
   if (loading) return <p className="py-16 text-center">Loading product…</p>;
-  if (loadError) return <div role="alert" className="py-10 text-[var(--hl-error)]">{loadError} <Link href="/admin/products" className="underline">Back to products</Link></div>;
+  if (loadError) return <div role="alert" className="py-10 text-[var(--hl-error)]">{loadError} <Link href={`/admin/products?${listParams}`} className="underline">Back to products</Link></div>;
 
-  return <div className="mx-auto max-w-6xl pb-16">
-    <Link href="/admin/products" className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--hl-primary)] hover:underline">← Back to products</Link>
+  return <div className="mx-auto max-w-5xl pb-16">
+    <Link href={`/admin/products?${listParams}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--hl-primary)] hover:underline">← Back to products</Link>
     <div className="mb-7 mt-3 flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-[var(--hl-accent)]">Product management</p><h1 className="mt-2 font-[family-name:var(--font-display)] text-4xl tracking-tight sm:text-5xl">{id ? 'Edit product' : 'Add product'}</h1><p className="mt-2 text-sm text-[var(--hl-muted)]">{id ? 'Update the details customers see and how this product is organized.' : 'Add the essentials, then choose how this product appears in the store.'}</p></div><button type="submit" form="product-editor" disabled={busy} className="inline-flex items-center justify-center bg-[var(--hl-primary)] text-white hover:bg-[var(--hl-primary-hover)] min-h-12 rounded-xl px-7 font-semibold shadow-sm disabled:opacity-60">{busy ? 'Saving…' : id ? 'Save changes' : 'Create product'}</button></div>
     <form id="product-editor" onSubmit={save} className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
       <div className="grid min-w-0 gap-6">
@@ -102,6 +106,7 @@ export function ProductEditorPage({ id }: { id?: string }) {
           <label className="mt-5 block text-sm font-semibold">Description <span className="text-[var(--hl-error)]">*</span><textarea required rows={5} value={description} onChange={(event) => setDescription(event.target.value)} className={inputClass} placeholder="Describe the materials, design, and uses…" /></label>
         </section>
         <aside className={`lg:hidden ${cardClass}`}>{organization()}</aside>
+        <section className={cardClass}><h2 className="font-[family-name:var(--font-display)] text-2xl">Gifting</h2><p className="mt-1 text-sm text-[var(--hl-muted)]">Product eligibility overrides the store default. Existing products are never changed when the default changes.</p><label className="mt-5 flex min-h-11 items-center gap-3 text-sm font-semibold"><input type="checkbox" checked={giftWrapEligible ?? false} onChange={(event) => setGiftWrapEligible(event.target.checked)} className="size-5 accent-[var(--hl-primary)]" />Eligible for gift wrapping</label></section>
         <section className={cardClass}><h2 className="font-[family-name:var(--font-display)] text-2xl">Product images</h2><p className="mt-1 text-sm text-[var(--hl-muted)]">The first image is the primary photo. JPEG, PNG, or WebP, up to 5 MB per image.</p>
           {product?.images[0] && <div className="mt-5 overflow-hidden rounded-xl bg-[var(--hl-page)]"><img src={product.images[0].url} alt={product.images[0].altText || name} className="max-h-72 w-full object-contain" /><p className="p-3 text-sm font-semibold">Primary photo</p></div>}
           {product && product.images.length > 1 && <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">{product.images.slice(1).map((image) => <img key={image.id} src={image.url} alt={image.altText || 'Gallery image'} className="aspect-square w-full rounded-xl object-cover" />)}</div>}
@@ -113,7 +118,7 @@ export function ProductEditorPage({ id }: { id?: string }) {
       </div>
       <aside className={`hidden lg:block ${cardClass}`}>{organization()}</aside>
       {error && <p role="alert" className="text-sm text-[var(--hl-error)] lg:col-span-2">{error}</p>}
-      <div className="flex flex-wrap items-center justify-end gap-4 border-t border-[var(--hl-border)] pt-5 lg:col-span-2"><Link href="/admin/products" className="inline-flex min-h-11 items-center px-4 text-sm font-semibold text-[var(--hl-muted)] hover:text-[var(--hl-primary)]">Cancel</Link><button disabled={busy} className="inline-flex items-center justify-center bg-[var(--hl-primary)] text-white hover:bg-[var(--hl-primary-hover)] min-h-12 rounded-xl px-7 font-semibold disabled:opacity-60">{busy ? 'Saving…' : id ? 'Save changes' : 'Create product'}</button></div>
+      <div className="flex flex-wrap items-center justify-end gap-4 border-t border-[var(--hl-border)] pt-5 lg:col-span-2"><Link href={`/admin/products?${listParams}`} className="inline-flex min-h-11 items-center px-4 text-sm font-semibold text-[var(--hl-muted)] hover:text-[var(--hl-primary)]">Cancel</Link><button disabled={busy} className="inline-flex items-center justify-center bg-[var(--hl-primary)] text-white hover:bg-[var(--hl-primary-hover)] min-h-12 rounded-xl px-7 font-semibold disabled:opacity-60">{busy ? 'Saving…' : id ? 'Save changes' : 'Create product'}</button></div>
     </form>
   </div>;
 

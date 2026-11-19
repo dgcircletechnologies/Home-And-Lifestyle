@@ -9,3 +9,5 @@ export const paymentsService = { list: (query: URLSearchParams) => api<PaymentLi
 export const money = (amount: number, currency: string) => new Intl.NumberFormat('en-IN', { style: 'currency', currency }).format(amount / 100);
 export type OrderAction = 'accept' | 'reject' | 'hold' | 'resume' | 'process' | 'ready' | 'dispatch' | 'deliver' | 'cancel';
 export const actOnOrder = (id: string, action: OrderAction, reason?: string, carrier?: string, trackingNumber?: string) => api<{ status: string; allowedActions: OrderAction[] }>(`admin/orders/${id}/actions`, { method: 'PATCH', body: { action, ...(reason ? { reason } : {}), ...(carrier ? { carrier } : {}), ...(trackingNumber ? { trackingNumber } : {}) } });
+export type PaymentSummary = { currency: 'INR'; period: { start: string; end: string; timezone: string }; capturedPaise: number; pendingPaise: number; refundedPaise: number; netPaise: number; refreshedAt: string; timestampNote: string };
+export const paymentSummaryService = { get: (query: URLSearchParams, signal?: AbortSignal) => api<PaymentSummary>(`admin/payments/summary?${query}`, { signal }) };
