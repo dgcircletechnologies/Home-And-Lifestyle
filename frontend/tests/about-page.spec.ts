@@ -17,10 +17,10 @@ test('About is reachable from desktop and mobile navigation and shows live publi
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
+  await expect(page.locator('.store-desktop-nav > a').last()).toHaveText('About');
   await page.locator('.store-desktop-nav').getByRole('link', { name: 'About' }).click();
   await expect(page).toHaveURL(/\/about$/);
   await expect(page.locator('.store-desktop-nav').getByRole('link', { name: 'About' })).toHaveAttribute('aria-current','page');
-  await expect(page.locator('.store-desktop-nav > a').last()).toHaveText('About');
   await expect(page.locator('.store-footer').getByRole('link', { name: 'About' })).toHaveAttribute('href','/about');
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(page.locator('#main').getByRole('link', { name: 'hello@example.in' })).toHaveAttribute('href','mailto:hello@example.in');
