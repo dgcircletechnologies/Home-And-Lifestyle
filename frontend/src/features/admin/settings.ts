@@ -1,6 +1,6 @@
 import { api } from '../../lib/api';
 
-export type StoreDetails = { storeName: string; supportEmail: string | null; supportPhone: string | null; version: number; market: string; currency: string; language: string; timezone: string };
+export type StoreDetails = { storeName: string; supportEmail: string | null; supportPhone: string | null; publicAddress: string | null; version: number; market: string; currency: string; language: string; timezone: string };
 export type ShippingPolicy = { version: number; coveragePolicy: 'LISTED_ONLY'; thresholdBasis: 'BEFORE_DISCOUNTS' | 'AFTER_DISCOUNTS'; waiveHandlingOnFree: boolean; currency: 'INR'; weightUnit: string; dimensionUnit: string };
 export type GiftingSettings = { version: number; giftWrapDefaultEligible: boolean; giftMessagesAvailable: boolean; giftReceiptsAvailable: boolean; giftWrapFeePaise: number; enquiryRouting: string };
 export type PinEntry = { pinCode: string; supported: boolean; enabled: boolean; reason: string | null; dispatchMinDays: number | null; dispatchMaxDays: number | null; deliveryMinDays: number | null; deliveryMaxDays: number | null };
@@ -10,7 +10,7 @@ export type ProductOption = { id: string; name: string; status?: string; variant
 export type ShippingQuote = { available: boolean; priced: boolean; pinCode: string; coverageRule: string; reason: string; currency: 'INR'; qualifyingSubtotalPaise?: number; thresholdPaise?: number | null; thresholdBasis?: string; baseChargePaise?: number; handlingChargePaise?: number; waivedBasePaise?: number; waivedHandlingPaise?: number; finalChargePaise?: number; merchandise?: { originalMerchandisePaise: number; merchandisePaise: number; automaticPaise: number; couponPaise: number }; lineBreakdown?: { name: string; quantity: number; basePaise: number; handlingPaise: number; waivedPaise: number; ruleNames: string[] }[]; estimate?: { dispatchMinDays: number | null; dispatchMaxDays: number | null; deliveryMinDays: number | null; deliveryMaxDays: number | null } };
 const base = 'admin/settings';
 export const settingsService = {
-  store: () => api<StoreDetails>(`${base}/store`), saveStore: (value: Pick<StoreDetails,'version'|'storeName'|'supportEmail'|'supportPhone'>) => api<StoreDetails>(`${base}/store`, { method: 'PATCH', body: value }),
+  store: () => api<StoreDetails>(`${base}/store`), saveStore: (value: Pick<StoreDetails,'version'|'storeName'|'supportEmail'|'supportPhone'|'publicAddress'>) => api<StoreDetails>(`${base}/store`, { method: 'PATCH', body: value }),
   shipping: () => api<ShippingPolicy>(`${base}/shipping`), saveShipping: (value: Pick<ShippingPolicy,'version'|'thresholdBasis'|'waiveHandlingOnFree'>) => api<ShippingPolicy>(`${base}/shipping`, { method: 'PATCH', body: value }),
   gifting: () => api<GiftingSettings>(`${base}/gifting`), saveGifting: (value: Pick<GiftingSettings,'version'|'giftWrapDefaultEligible'|'giftMessagesAvailable'|'giftReceiptsAvailable'|'giftWrapFeePaise'>) => api<GiftingSettings>(`${base}/gifting`, { method: 'PATCH', body: value }),
   pins: (query: URLSearchParams) => api<Page<PinEntry>>(`${base}/shipping/pins?${query}`), savePins: (body: unknown) => api<{version:number;count:number}>(`${base}/shipping/pins`, { method: 'POST', body }), removePin: (pin: string, version: number) => api(`${base}/shipping/pins/${pin}`, { method: 'DELETE', body: { version } }),

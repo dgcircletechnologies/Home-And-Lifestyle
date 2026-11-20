@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { categoryVisibility, branchIds } from '../categories/category-visibility';
+import { activeAutomaticPromotionWhere } from '../promotions/public-promotion';
 
 export type ShopInput = { category?: string; material?: string; colour?: string; room?: string; style?: string; size?: string; finish?: string; tag?: string; collection?: string; stock?: 'true'; sale?: 'true'; min?: number; max?: number; sort: 'newest'|'price-asc'|'price-desc'|'name-asc'|'name-desc'; page: number; pageSize: number; search?: string; giftable?: 'true'; includeCategoryRows?: boolean };
 const groups = ['category','material','colour','room','style','size','finish','tag','collection'] as const;
@@ -23,7 +24,7 @@ export class ShopService {
         tags:{select:{tag:{select:{name:true,slug:true}}}}, collections:{select:{collection:{select:{name:true,slug:true,startsAt:true,endsAt:true}}}},
         variants:{select:{id:true,pricePaise:true,stockQuantity:true,images:{orderBy:[{position:'asc' as const},{id:'asc' as const}],take:1,select:{url:true,altText:true}},selections:{select:{value:{select:{label:true,option:{select:{key:true}}}}}}}},
       }}),
-      this.db.promotion.findMany({where:{lifecycle:'PUBLISHED',enabled:true,OR:[{startsAt:null},{startsAt:{lte:now}}],AND:[{OR:[{endsAt:null},{endsAt:{gt:now}}]}]},select:{id:true,productId:true,categoryId:true,kind:true,amountPaise:true,percentBasisPoints:true}}),
+      this.db.promotion.findMany({where:activeAutomaticPromotionWhere(now),select:{id:true,productId:true,categoryId:true,kind:true,amountPaise:true,percentBasisPoints:true}}),
     ]);
     const selected = new Map<Group,string[]>(groups.map(group => [group,selectedValues(input[group])]))
     if (input.collection === 'new-arrivals') selected.set('collection', []);

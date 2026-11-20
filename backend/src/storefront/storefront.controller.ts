@@ -13,6 +13,7 @@ const pin = z.string().regex(/^[1-9][0-9]{5}$/);
 export class StorefrontController {
   constructor(private readonly storefront: StorefrontService, private readonly shopService: ShopService) {}
   @Get('shop') shop(@Query() raw: unknown) { return this.shopService.list({ ...parse(shopQuery, raw), pageSize: 20 }); }
+  @Get('offers') offers() { return this.storefront.offers(); }
   @Get('home') home() { return this.storefront.home(); }
   @Get('navigation') navigation() { return this.storefront.menu(); }
   @Get('products') products(@Query() raw: unknown) { return this.storefront.products(parse(query, raw)); }

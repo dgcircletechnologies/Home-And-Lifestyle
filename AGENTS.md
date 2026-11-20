@@ -67,6 +67,10 @@ Status: discovery baseline, 16 November 2026. Sources: the owner's project brief
 
 ## ENG-01 Schema ownership and repository review
 
+- Storefront About approval, 20 November 2026 (UX-01, ADM-01, ENG-01): add `/about` to desktop and mobile storefront navigation and publish the optional customer-facing address from Admin Store Details alongside existing support email and phone. Empty address/contact values remain unpublished. Brand story copy and editorial imagery are placeholders pending D02.
+
+- Public homepage offers approval, 20 November 2026 (MKT-01, CAT-01, UX-01, ADM-01, ENG-01): show only active, scheduled automatic product or direct category promotions on the homepage, with a moving offers strip and category badges. Guest offer data excludes draft, paused, expired, hidden-target and cart-only coupon rules; product and category links use their public routes. The existing automatic promotion model has no storewide target, so storewide offer copy remains a future capability.
+
 - Homepage CTA refinement approval, 20 November 2026 (UX-01, CAT-01, SHP-01, ENG-01): use one scoped, accessible solid storefront-plum CTA style for homepage shopping, gifting, editorial and PIN-check actions, with tonal hover and active states derived from storefront ink. This supersedes the earlier gradient CTA treatment. Keep Shop by Category and each Shop <Category> heading beside its CTA on mobile as well as desktop. Preserve existing destinations, public catalogue rules and editorial imagery.
 
 - Customer homepage category discovery approval, 20 November 2026 (CAT-01, UX-01, MKT-01, ADM-01, ENG-01): retain the homepage editorial and gifting sections, add a local editorial hero placeholder, make category and featured cards horizontally browsable on mobile, and show capped product rows for every active public category. These rows reuse the Shop All card and effective public pricing, with no new commerce policy.

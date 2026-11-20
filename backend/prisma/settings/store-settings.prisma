@@ -4,6 +4,7 @@ model StoreSettings {
   storeName                String   @default("Home & Lifestyle")
   supportEmail             String?
   supportPhone             String?
+  publicAddress            String?
   storeVersion             Int      @default(0)
   shippingVersion          Int      @default(0)
   giftingVersion           Int      @default(0)

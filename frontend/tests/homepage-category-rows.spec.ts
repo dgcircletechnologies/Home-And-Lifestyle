@@ -19,6 +19,7 @@ const home = {
   featured: lighting, latest: kitchen, giftable: [kitchen[0]],
   collections: [{ name: 'The Sunday Edit', slug: 'sunday-edit', description: 'A few pieces for home.', products: [lighting[0]] }],
   categoryRows: [{ slug: 'lighting', products: lighting }, { slug: 'kitchen', products: kitchen }, { slug: 'planters', products: planters }],
+  offers: [],
 };
 
 test('homepage keeps editorial sections and shows shared category cards in desktop and mobile layouts', async ({ page }) => {
@@ -76,4 +77,73 @@ test('homepage keeps editorial sections and shows shared category cards in deskt
   await page.emulateMedia({ reducedMotion: 'reduce' });
   expect(await page.locator('.store-home-category-row .store-product-photo img').first().evaluate(image => parseFloat(getComputedStyle(image).transitionDuration))).toBeLessThan(0.001);
   expect(await categoryCta.evaluate(button => parseFloat(getComputedStyle(button).transitionDuration))).toBeLessThan(0.001);
+});
+
+test('live product and category offers animate, route correctly, and badge only the targeted category', async ({ page }) => {
+  const offers = [
+    { id: 'product-offer', title: 'Lamp special', discountType: 'PERCENTAGE', discountValue: 20, targetType: 'PRODUCT', targetId: lighting[0].id, targetName: lighting[0].name, targetSlug: lighting[0].slug },
+    { id: 'category-offer', title: 'Planter special', discountType: 'FIXED', discountValue: 200, targetType: 'CATEGORY', targetId: 'planters', targetName: 'Planters & Greenery', targetSlug: 'planters' },
+  ];
+  await page.route('**/api/storefront/home', route => route.fulfill({ json: { ...home, offers } }));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  const strip = page.locator('.store-offers');
+  await expect(strip.getByRole('heading', { name: 'Offers live now', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  expect(await strip.evaluate(element => Boolean(element.compareDocumentPosition(document.querySelector('.store-categories')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+  const tracks = strip.locator('.store-offers-track');
+  await expect(tracks).toHaveCount(2);
+  const widths = await tracks.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().width));
+  expect(widths[0]).toBeGreaterThan(1440);
+  expect(Math.abs(widths[0] - widths[1])).toBeLessThan(1);
+  const motion = strip.locator('.store-offers-motion');
+  const firstX = await motion.evaluate(element => new DOMMatrix(getComputedStyle(element).transform).m41);
+  await page.waitForTimeout(250);
+  const secondX = await motion.evaluate(element => new DOMMatrix(getComputedStyle(element).transform).m41);
+  expect(secondX).toBeLessThan(firstX);
+  await strip.locator('.store-offers-window').hover();
+  await expect(motion).toHaveCSS('animation-play-state', 'paused');
+  await page.mouse.move(0, 0);
+  await strip.getByRole('link', { name: '20% off on Lighting piece 1' }).focus();
+  await expect(motion).toHaveCSS('animation-play-state', 'paused');
+  await expect(strip.getByRole('link', { name: '₹200 off on Planters & Greenery' })).toHaveAttribute('href', '/categories/planters');
+  await expect(page.locator('.store-categories .store-category-tile').nth(2).locator('.store-category-offer-badge')).toHaveText('₹200 OFF');
+  await expect(page.locator('.store-categories .store-category-tile').first().locator('.store-category-offer-badge')).toHaveCount(0);
+  await expect(page.locator('.store-home-category-row').nth(2).locator('.store-category-offer-badge')).toHaveText('₹200 OFF');
+  await expect(page.locator('.store-home-category-row').first().locator('.store-category-offer-badge')).toHaveCount(0);
+  await page.setViewportSize({ width: 375, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  const rowHeader = page.locator('.store-home-category-row').nth(2).locator('.store-section-heading');
+  expect(await rowHeader.evaluate(element => { const title = element.querySelector('.store-home-category-title')!.getBoundingClientRect(), button = element.querySelector('.store-home-cta')!.getBoundingClientRect(); return title.right < button.left && button.right <= innerWidth; })).toBe(true);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(motion).toHaveCSS('animation-name', 'none');
+  await expect(strip.locator('.store-offers-window')).toHaveCSS('overflow-x', 'auto');
+  await expect(strip.locator('.store-offer-item[aria-hidden=true]').first()).toBeHidden();
+  await strip.getByRole('link', { name: '20% off on Lighting piece 1' }).click();
+  await expect(page).toHaveURL(/\/products\/piece-1/);
+  await page.goto('/');
+  await strip.getByRole('link', { name: '₹200 off on Planters & Greenery' }).click();
+  await expect(page).toHaveURL(/\/categories\/planters/);
+});
+
+test('homepage omits the offers strip and badges when no offer is active', async ({ page }) => {
+  await page.route('**/api/storefront/home', route => route.fulfill({ json: home }));
+  await page.goto('/');
+  await expect(page.locator('.store-categories')).toBeVisible();
+  await expect(page.locator('.store-offers')).toHaveCount(0);
+  await expect(page.locator('.store-category-offer-badge')).toHaveCount(0);
+});
+
+test('a single active offer still fills both seamless ticker tracks', async ({ page }) => {
+  const offer = { id: 'single', title: 'Lamp special', discountType: 'PERCENTAGE', discountValue: 10, targetType: 'PRODUCT', targetId: lighting[0].id, targetName: lighting[0].name, targetSlug: lighting[0].slug };
+  await page.route('**/api/storefront/home', route => route.fulfill({ json: { ...home, offers: [offer] } }));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  const tracks = page.locator('.store-offers-track');
+  await expect(tracks).toHaveCount(2);
+  const widths = await tracks.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().width));
+  expect(widths[0]).toBeGreaterThan(1440);
+  expect(Math.abs(widths[0] - widths[1])).toBeLessThan(1);
+  await expect(page.getByRole('link', { name: '10% off on Lighting piece 1' })).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440);
 });

@@ -2,13 +2,15 @@ import { api } from '../../lib/api';
 export type StoreCategory = { id: string; name: string; slug: string; parentId: string | null; image: { url: string; altText: string | null } | null };
 export type StoreProduct = { id: string; name: string; slug: string; description: string; story: string | null; isFeatured: boolean; giftWrapEligible: boolean; image: { url: string; altText: string | null } | null; images: { url: string; altText: string | null }[]; minPricePaise: number | null; maxPricePaise: number | null; compareAtPricePaise: number | null; available: boolean; variants: { id: string; sku: string; pricePaise: number; optionCombinationKey: string; available: boolean }[]; categories: { name: string; slug: string }[] };
 export type StoreCollection = { name: string; slug: string; description: string | null; products?: StoreProduct[] };
+export type StoreOffer = { id: string; title: string; discountType: 'FIXED' | 'PERCENTAGE'; discountValue: number; targetType: 'PRODUCT' | 'CATEGORY'; targetId: string; targetName: string; targetSlug: string };
 export type StoreMenu = { categories: StoreCategory[]; directory: StoreCategory[]; collections: StoreCollection[] };
-export type StoreHome = { categories: StoreCategory[]; featured: StoreProduct[]; latest: StoreProduct[]; giftable: StoreProduct[]; collections: StoreCollection[]; categoryRows: { slug: string; products: StoreProduct[] }[] };
+export type StoreHome = { categories: StoreCategory[]; featured: StoreProduct[]; latest: StoreProduct[]; giftable: StoreProduct[]; collections: StoreCollection[]; categoryRows: { slug: string; products: StoreProduct[] }[]; offers: StoreOffer[] };
 export type ProductPage = { items: StoreProduct[]; total: number; page: number; pageSize: number };
 export type ShopPage = Omit<ProductPage, 'items'> & { totalPages: number; onSale: boolean; items: StoreProduct[]; filters: Record<string, {value:string;label:string}[]> };
 export const catalog = {
   shop: (query: URLSearchParams, signal?: AbortSignal) => api<ShopPage>(`storefront/shop?${query}`, { signal }),
   home: () => api<StoreHome>('storefront/home'),
+  offers: () => api<StoreOffer[]>('storefront/offers'),
   navigation: () => api<StoreMenu>('storefront/navigation'),
   products: (query: URLSearchParams) => api<ProductPage>(`storefront/products?${query}`),
   product: (slug: string) => api<StoreProduct>(`storefront/products/${slug}`),

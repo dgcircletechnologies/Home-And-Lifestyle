@@ -24,4 +24,4 @@ export function ProductCard({product,shop=false}:{product:StoreProduct;shop?:boo
     </div>
   </article>;
 }
-export function CategoryTile({category}:{category:StoreCategory}) { return <Link className="store-category-tile" href={categoryHref(category)}><div className="store-category-photo"><StorePhoto url={category.image?.url} alt={category.name}/></div><span>{category.name}<ArrowRight size={17}/></span></Link>; }
+export function CategoryTile({category,offerLabel}:{category:StoreCategory;offerLabel?:string}) { return <Link className="store-category-tile" href={categoryHref(category)}><div className="store-category-photo"><StorePhoto url={category.image?.url} alt={category.name}/>{offerLabel&&<span className="store-category-offer-badge">{offerLabel}</span>}</div><span>{category.name}<ArrowRight size={17}/></span></Link>; }
