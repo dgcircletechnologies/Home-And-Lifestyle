@@ -16,7 +16,7 @@ const lock = (tx: Prisma.TransactionClient, key: string) => tx.$queryRaw`SELECT 
 const invalidLink = () => new BadRequestException({ code: 'ACTIVATION_INVALID', message: 'This activation link is invalid, expired, or already used. Request a new email.' });
 const invalidRefresh = () => new UnauthorizedException({ code: 'REFRESH_INVALID', message: 'Please sign in again.' });
 const unavailable = () => new ForbiddenException({ code: 'ACCOUNT_UNAVAILABLE', message: 'This account is unavailable.' });
-export const acknowledgement = () => ({ message: 'If this address is eligible, you’ll receive an activation email. If you already have an account, sign in.', resendAfterSeconds: authConfig().resendSeconds });
+export const acknowledgement = () => ({ message: 'If this account needs verification, we’ll request another email. Check your inbox in a few minutes.', resendAfterSeconds: authConfig().resendSeconds, delivery: 'requested' as const });
 @Injectable()
 export class AuthService {
   private readonly dummyHash = hashPassword(randomBytes(32).toString('hex'));
@@ -26,15 +26,20 @@ export class AuthService {
     const passwordHash = await hashPassword(input.password);
     const email = canonicalEmail(input.email);
     const token = opaque();
+    let verificationId: string;
     try {
-      await this.db.user.create({ data: { email, emailOriginal: input.email.trim(), name: input.name, passwordHash, role: 'CUSTOMER', emailVerifiedAt: null,
-        verificationTokens: { create: { email, purpose: 'EMAIL_VERIFICATION', tokenHash: tokenHash(token), expiresAt: new Date(Date.now() + authConfig().activationHours * 3600000) } } } });
+      const created = await this.db.user.create({ data: { email, emailOriginal: input.email.trim(), name: input.name, passwordHash, role: 'CUSTOMER', emailVerifiedAt: null,
+        verificationTokens: { create: { email, purpose: 'EMAIL_VERIFICATION', tokenHash: tokenHash(token), expiresAt: new Date(Date.now() + authConfig().activationHours * 3600000) } } }, select: { verificationTokens: { select: { id: true }, take: 1 } } });
+      verificationId = created.verificationTokens[0].id;
     } catch (error) {
-      if ((error as { code?: string }).code === 'P2002') return acknowledgement();
+      if ((error as { code?: string }).code === 'P2002') throw new ConflictException({ code: 'EMAIL_ALREADY_REGISTERED', message: 'This email already has an account. Sign in or request another verification email.' });
       throw error;
     }
-    await this.mail.activation(input.email.trim(), input.name, token);
-    return acknowledgement();
+    const delivery = await this.mail.activation(input.email.trim(), input.name, token);
+    await this.db.emailVerification.update({ where: { id: verificationId }, data: delivery === 'accepted' ? { deliveryAcceptedAt: new Date() } : { deliveryFailedAt: new Date() } });
+    return delivery === 'accepted'
+      ? { message: 'Your account was created. The verification email was accepted by our email service.', resendAfterSeconds: authConfig().resendSeconds, delivery }
+      : { message: 'Your account was created, but we couldn’t send the verification email. Please try again.', resendAfterSeconds: 0, delivery };
   }
   async verifyEmail(token: string) {
     if (!validOpaque(token)) throw invalidLink();
@@ -63,13 +68,23 @@ export class AuthService {
       if (!current || current.email !== email || current.emailVerifiedAt || current.disabledAt || current.deletedAt) return null;
       const c = authConfig(); const now = new Date();
       const recent = await tx.emailVerification.findMany({ where: { userId: user.id, createdAt: { gt: new Date(now.getTime() - 3600000) } }, orderBy: { createdAt: 'desc' } });
-      if (recent.length >= c.resendHourly || (recent[0] && now.getTime() - recent[0].createdAt.getTime() < c.resendSeconds * 1000)) return null;
-      await tx.emailVerification.updateMany({ where: { userId: user.id, consumedAt: null, revokedAt: null }, data: { revokedAt: now } });
-      await tx.emailVerification.create({ data: { userId: user.id, email, purpose: 'EMAIL_VERIFICATION', tokenHash: tokenHash(token), expiresAt: new Date(now.getTime() + c.activationHours * 3600000) } });
-      return current;
+      if (recent.length >= c.resendHourly) return { kind: 'cooldown' as const, seconds: Math.max(1, Math.ceil((recent[recent.length - 1].createdAt.getTime() + 3600000 - now.getTime()) / 1000)) };
+      const lastAccepted = recent.find(row => row.deliveryAcceptedAt);
+      if (lastAccepted?.deliveryAcceptedAt && now.getTime() - lastAccepted.deliveryAcceptedAt.getTime() < c.resendSeconds * 1000) return { kind: 'cooldown' as const, seconds: Math.ceil((lastAccepted.deliveryAcceptedAt.getTime() + c.resendSeconds * 1000 - now.getTime()) / 1000) };
+      const pending = recent.find(row => !row.deliveryAcceptedAt && !row.deliveryFailedAt && !row.revokedAt && !row.consumedAt && now.getTime() - row.createdAt.getTime() < 15000);
+      if (pending) return { kind: 'cooldown' as const, seconds: 15 };
+      const record = await tx.emailVerification.create({ data: { userId: user.id, email, purpose: 'EMAIL_VERIFICATION', tokenHash: tokenHash(token), expiresAt: new Date(now.getTime() + c.activationHours * 3600000) } });
+      return { kind: 'send' as const, user: current, recordId: record.id };
     });
-    if (delivery) await this.mail.activation(delivery.emailOriginal ?? delivery.email, delivery.name, token);
-    return acknowledgement();
+    if (!delivery) return acknowledgement();
+    if (delivery.kind === 'cooldown') return acknowledgement();
+    const result = await this.mail.activation(delivery.user.emailOriginal ?? delivery.user.email, delivery.user.name, token);
+    await this.db.$transaction(async tx => {
+      const now = new Date();
+      await tx.emailVerification.update({ where: { id: delivery.recordId }, data: result === 'accepted' ? { deliveryAcceptedAt: now } : { deliveryFailedAt: now } });
+      if (result === 'accepted') await tx.emailVerification.updateMany({ where: { userId: user.id, id: { not: delivery.recordId }, revokedAt: null, consumedAt: null }, data: { revokedAt: now } });
+    });
+    return result === 'accepted' ? acknowledgement() : { message: 'We couldn’t send the verification email. Please try again.', resendAfterSeconds: 0, delivery: 'failed' as const };
   }
   private async throttle(email: string) {
     const key = tokenHash(`login:${email}`);

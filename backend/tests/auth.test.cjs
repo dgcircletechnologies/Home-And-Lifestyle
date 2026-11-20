@@ -51,7 +51,7 @@ test('isolated HTTP activation and JWT integration', { skip: !process.env.TEST_D
   const app = await createApp(); await app.listen(0, '127.0.0.1');
   const db = app.get(PrismaService); const base = await app.getUrl(); const mail = [];
   app.get(PasswordPolicy).assertAllowed = async () => {};
-  app.get(MailService).activation = async (email, name, token) => { mail.push({ email, name, token }); };
+  app.get(MailService).activation = async (email, name, token) => { mail.push({ email, name, token }); return 'accepted'; };
   const call = (path, method = 'GET', body, auth = {}, origin = 'http://localhost:3100', csrf = '1') => fetch(base + '/api/' + path, { method, headers: { Origin: origin, 'X-CSRF-Protection': csrf, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(auth.cookie ? { Cookie: auth.cookie } : {}), ...(auth.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {}) }, body: body !== undefined ? JSON.stringify(body) : undefined });
   const register = async () => {
     const email = `Test+${randomUUID()}@example.test`; const password = randomBytes(24).toString('base64url');
@@ -78,12 +78,12 @@ test('isolated HTTP activation and JWT integration', { skip: !process.env.TEST_D
       assert.equal((await call('auth/register', 'POST', { email: account.email, password: account.password, name: 'X', emailVerifiedAt: new Date() })).status, 400);
       const row = await db.emailVerification.findFirstOrThrow({ where: { userId: account.user.id } }); assert.equal(row.tokenHash, tokenHash(account.token));
       const response = await call('auth/register', 'POST', { email: account.email, password: account.password, name: 'X' });
-      assert.equal(response.headers.get('set-cookie'), null); assert.deepEqual(Object.keys(await response.json()).sort(), ['message', 'resendAfterSeconds']);
+      assert.equal(response.status, 409); assert.equal(response.headers.get('set-cookie'), null); assert.equal((await response.json()).error.code, 'EMAIL_ALREADY_REGISTERED');
     });
     await t.test('parallel duplicate registration creates one account and never overwrites or invalidates link', async () => {
       const email = `duplicate-${randomUUID()}@example.test`; const input = { email, name: 'Original', password: account.password };
       const responses = await Promise.all([call('auth/register', 'POST', input), call('auth/register', 'POST', input)]);
-      assert.deepEqual(responses.map(r => r.status), [202, 202]); assert.deepEqual(await responses[0].json(), await responses[1].json());
+      assert.deepEqual(responses.map(r => r.status).sort(), [202, 409]);
       assert.equal(await db.user.count({ where: { email } }), 1);
       await call('auth/register', 'POST', { email: account.email.toUpperCase(), name: 'Changed', password: 'another valid password' });
       const original = await db.user.findUniqueOrThrow({ where: { id: account.user.id } });
@@ -115,13 +115,13 @@ test('isolated HTTP activation and JWT integration', { skip: !process.env.TEST_D
     await t.test('resend cooldown, hourly limit, concurrent requests and generic responses', async () => {
       const pending = await register(); const start = mail.length;
       await call('auth/resend-activation', 'POST', { email: pending.email }); assert.equal(mail.length, start);
-      await db.emailVerification.updateMany({ where: { userId: pending.user.id }, data: { createdAt: new Date(Date.now() - 61000) } });
+      await db.emailVerification.updateMany({ where: { userId: pending.user.id }, data: { createdAt: new Date(Date.now() - 61000), deliveryAcceptedAt: new Date(Date.now() - 61000) } });
       await Promise.all([call('auth/resend-activation', 'POST', { email: pending.email }), call('auth/resend-activation', 'POST', { email: pending.email })]);
       assert.equal(mail.length, start + 1);
       assert.equal((await call('auth/verify-email', 'POST', { token: pending.token })).status, 400);
       const latest = mail[mail.length - 1].token;
       await db.emailVerification.createMany({ data: Array.from({ length: 3 }, () => ({ userId: pending.user.id, email: pending.user.email, tokenHash: tokenHash(randomUUID()), expiresAt: new Date(Date.now() + 60000), createdAt: new Date(Date.now() - 61000), revokedAt: new Date() })) });
-      await db.emailVerification.updateMany({ where: { userId: pending.user.id }, data: { createdAt: new Date(Date.now() - 61000) } });
+      await db.emailVerification.updateMany({ where: { userId: pending.user.id }, data: { createdAt: new Date(Date.now() - 61000), deliveryAcceptedAt: new Date(Date.now() - 61000) } });
       const limited = await call('auth/resend-activation', 'POST', { email: pending.email }); const unknown = await call('auth/resend-activation', 'POST', { email: `${randomUUID()}@example.test` });
       assert.deepEqual(await limited.json(), await unknown.json()); assert.equal(mail.length, start + 1);
       assert.equal((await call('auth/verify-email', 'POST', { token: latest })).status, 200);
@@ -187,22 +187,20 @@ test('isolated HTTP activation and JWT integration', { skip: !process.env.TEST_D
         assert.equal((await fetch(endpoint, options)).status, 429);
       } finally { await limitedApp.close(); process.env.AUTH_IP_LIMIT = previous; }
     });
-    await t.test('SMTP message uses trusted fragment URL and escapes markup; failure keeps pending account recoverable', async () => {
-      const real = new MailService(); const email = `smtp-${randomUUID()}@example.test`; const token = randomBytes(32).toString('base64url');
-      await real.activation(email, '<Untrusted & Name>', token);
-      const listing = await (await fetch('http://localhost:8028/api/v1/messages')).json();
-      const message = listing.messages.find(m => m.To.some(to => to.Address === email)); assert.ok(message);
-      const detail = await (await fetch(`http://localhost:8028/api/v1/message/${message.ID}`)).json();
-      assert.ok(detail.Text.includes(`http://localhost:3100/activate#token=${token}`)); assert.ok(detail.HTML.includes('&lt;Untrusted &amp; Name&gt;')); assert.ok(!detail.HTML.includes('<Untrusted'));
-      const originalPort = process.env.SMTP_PORT; process.env.SMTP_PORT = '1';
-      app.get(MailService).activation = real.activation.bind(real);
-      const response = await call('auth/register', 'POST', { email: `failure-${email}`, name: 'Pending', password: randomBytes(24).toString('hex') }); assert.equal(response.status, 202);
-      const pending = await db.user.findUniqueOrThrow({ where: { email: `failure-${email}` } }); assert.equal(pending.emailVerifiedAt, null); assert.equal(await db.session.count({ where: { userId: pending.id } }), 0);
-      process.env.SMTP_PORT = originalPort;
-      await db.emailVerification.updateMany({ where: { userId: pending.id }, data: { createdAt: new Date(Date.now() - 61000) } });
-      assert.equal((await call('auth/resend-activation', 'POST', { email: pending.email })).status, 202);
-      const recovered = await (await fetch('http://localhost:8028/api/v1/messages')).json();
-      assert.ok(recovered.messages.some(m => m.To.some(to => to.Address === pending.email)));
+    await t.test('failed send leaves a pending account and immediate resend recovers without duplicate account', async () => {
+      const originalSend = app.get(MailService).activation;
+      app.get(MailService).activation = async () => 'failed';
+      const email = `failure-${randomUUID()}@example.test`;
+      const response = await call('auth/register', 'POST', { email, name: 'Pending', password: randomBytes(24).toString('hex') });
+      assert.equal(response.status, 202); assert.equal((await response.json()).delivery, 'failed');
+      const pending = await db.user.findUniqueOrThrow({ where: { email } });
+      assert.equal(pending.emailVerifiedAt, null); assert.equal(await db.session.count({ where: { userId: pending.id } }), 0);
+      assert.equal((await db.emailVerification.findFirstOrThrow({ where: { userId: pending.id } })).deliveryFailedAt instanceof Date, true);
+      app.get(MailService).activation = originalSend;
+      const resend = await call('auth/resend-activation', 'POST', { email });
+      assert.equal(resend.status, 202); assert.equal((await resend.json()).delivery, 'requested');
+      assert.equal(await db.user.count({ where: { email } }), 1);
+      assert.equal(mail.filter(item => item.email === email).length, 1);
     });
   } finally { await app.close(); }
 });

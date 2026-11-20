@@ -52,8 +52,8 @@ export const authService = {
     if (generation !== epoch) throw new ApiError(401, 'Session changed.');
     blocked = false; setAccessToken(result.accessToken); notify(result.user); channel?.postMessage('account-changed'); return result.user;
   }),
-  register: (name: string, email: string, password: string) => api<{ message: string; resendAfterSeconds: number }>('auth/register', { method: 'POST', body: { name, email, password }, quiet401: true, timeoutMs: 30000 }),
-  resend: (email: string) => api<{ message: string; resendAfterSeconds: number }>('auth/resend-activation', { method: 'POST', body: { email }, quiet401: true, timeoutMs: 30000 }),
+  register: (name: string, email: string, password: string) => api<{ message: string; resendAfterSeconds: number; delivery: 'accepted' | 'failed' }>('auth/register', { method: 'POST', body: { name, email, password }, quiet401: true, timeoutMs: 30000 }),
+  resend: (email: string) => api<{ message: string; resendAfterSeconds: number; delivery: 'requested' | 'failed' }>('auth/resend-activation', { method: 'POST', body: { email }, quiet401: true, timeoutMs: 30000 }),
   verify: (token: string) => api<{ message: string }>('auth/verify-email', { method: 'POST', body: { token }, quiet401: true }),
   refreshUser: async () => { const user = await api<User>('auth/me'); notify(user); return user; },
   logout: async () => {

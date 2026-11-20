@@ -8,23 +8,40 @@ import { ApiError } from '../../lib/api';
 import { AuthShell } from './auth-shell';
 import { authService } from './service';
 
-export function CheckEmail({ initialEmail = '', initialCooldown = 0 }: { initialEmail?: string; initialCooldown?: number }) {
-  const [email, setEmail] = useState(initialEmail); const [seconds, setSeconds] = useState(initialCooldown); const [busy, setBusy] = useState(false); const lock = useRef(false);
-  const [message, setMessage] = useState('If this address is eligible, you’ll receive an activation email. If you already have an account, sign in.');
-  useEffect(() => { if (seconds <= 0) return; const timer = setTimeout(() => setSeconds(value => value - 1), 1000); return () => clearTimeout(timer); }, [seconds]);
+type VerificationContext = { email: string; delivery: 'accepted' | 'failed' | 'requested'; message: string; nextAvailableAt: number; createdAt: number };
+const contextKey = 'hl-verification-context';
+export function saveVerificationContext(input: { email: string; delivery: VerificationContext['delivery']; message: string; resendAfterSeconds: number }) {
+  if (typeof window === 'undefined') return;
+  const context: VerificationContext = { email: input.email.trim(), delivery: input.delivery, message: input.message, nextAvailableAt: Date.now() + input.resendAfterSeconds * 1000, createdAt: Date.now() };
+  window.sessionStorage.setItem(contextKey, JSON.stringify(context));
+}
+function readVerificationContext(): VerificationContext | null {
+  try {
+    const raw = window.sessionStorage.getItem(contextKey); if (!raw) return null;
+    const value = JSON.parse(raw) as VerificationContext;
+    if (typeof value.email !== 'string' || value.email.length > 254 || !['accepted', 'failed', 'requested'].includes(value.delivery) || !Number.isFinite(value.nextAvailableAt) || Date.now() - value.createdAt > 86400000) return null;
+    return value;
+  } catch { return null; }
+}
+export function CheckEmail() {
+  const [email, setEmail] = useState(''); const [delivery, setDelivery] = useState<'accepted' | 'failed' | 'requested' | 'direct'>('direct');
+  const [message, setMessage] = useState('Enter your email address to request a verification link.');
+  const [nextAvailableAt, setNextAvailableAt] = useState(0); const [seconds, setSeconds] = useState(0);
+  const [busy, setBusy] = useState(false); const lock = useRef(false);
+  useEffect(() => { queueMicrotask(() => { const context = readVerificationContext(); if (!context) return; setEmail(context.email); setDelivery(context.delivery); setMessage(context.message); setNextAvailableAt(context.nextAvailableAt); setSeconds(Math.max(0, Math.ceil((context.nextAvailableAt - Date.now()) / 1000))); }); }, []);
+  useEffect(() => { if (seconds <= 0) return; const timer = window.setTimeout(() => setSeconds(Math.max(0, Math.ceil((nextAvailableAt - Date.now()) / 1000))), 1000); return () => window.clearTimeout(timer); }, [seconds, nextAvailableAt]);
   async function resend(event: React.FormEvent) {
     event.preventDefault(); if (lock.current || seconds > 0) return; lock.current = true; setBusy(true);
-    try { const result = await authService.resend(email); setMessage(result.message); setSeconds(result.resendAfterSeconds); }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Please try again.'); }
+    try {
+      const result = await authService.resend(email.trim());
+      const next = Date.now() + result.resendAfterSeconds * 1000;
+      setDelivery(result.delivery === 'failed' ? 'failed' : 'requested'); setMessage(result.message); setNextAvailableAt(next); setSeconds(result.resendAfterSeconds);
+      saveVerificationContext({ email, delivery: result.delivery, message: result.message, resendAfterSeconds: result.resendAfterSeconds });
+    } catch (reason) { setDelivery('failed'); setMessage(reason instanceof Error ? reason.message : 'We couldn’t request the email. Please try again.'); setSeconds(0); }
     finally { lock.current = false; setBusy(false); }
   }
-  return <AuthShell eyebrow="One small step" title="Check your email." intro="We’ve sent an activation link when this address is eligible. Open it, then return here to sign in.">
-    <div className="mb-7 flex size-11 items-center justify-center rounded-full bg-[var(--hl-primary)] text-white"><MailCheck className="size-5" aria-hidden="true" /></div>
-    <StatusMessage tone="neutral" role="status">{message}</StatusMessage>
-    <p className="mt-5 text-sm leading-6 text-[var(--hl-muted)]">Check your spam folder too. If you request another link, please use the most recent email.</p>
-    <form className="mt-7 grid gap-5" onSubmit={resend}><FormField id="resend-email" label="Email address" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required maxLength={254} /><Button type="submit" variant="secondary" busy={busy} disabled={seconds > 0} className="w-full">{busy ? 'Requesting…' : seconds > 0 ? `Resend available in ${seconds}s` : <><RefreshCw className="size-4" aria-hidden="true" />Resend activation email</>}</Button></form>
-    <p className="mt-8 text-sm text-[var(--hl-muted)]"><Link className="font-semibold text-[var(--hl-primary)]" href="/login">Back to sign in</Link></p>
-  </AuthShell>;
+  const failed = delivery === 'failed';
+  return <div className="check-email-screen"><div className="check-email-wrap"><Link href="/" className="check-email-brand">Home &amp; Lifestyle</Link><section className="check-email-panel" aria-labelledby="check-email-title"><div className="check-email-icon"><MailCheck size={25} aria-hidden="true" /></div><h1 id="check-email-title">{failed ? 'We couldn’t send your verification email' : delivery === 'direct' ? 'Verify your email.' : 'Check your email.'}</h1><p className="check-email-intro">{failed ? 'Your account is ready to verify. Try sending the link again.' : delivery === 'direct' ? 'Request a verification link to activate your account.' : delivery === 'requested' ? 'If this account needs verification, a message will be sent when eligible.' : 'Our email service accepted your verification message. It may take a moment to arrive.'}</p><form onSubmit={resend} className="check-email-form"><FormField id="resend-email" label="Email address" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required maxLength={254} />{email && <p className="check-email-recipient">Sending to <strong>{email}</strong></p>}<div className={`check-email-status ${failed ? 'is-error' : ''}`} role="status" aria-live="polite">{message}</div><Button type="submit" busy={busy} disabled={seconds > 0} className="w-full">{busy ? 'Requesting…' : seconds > 0 ? `Resend available in ${seconds}s` : failed ? 'Retry sending email' : <><RefreshCw size={16} aria-hidden="true" />Resend verification email</>}</Button></form><p className="check-email-hint">Check your spam folder if the message takes a few minutes.</p><Link href="/login" className="check-email-back">Back to login</Link></section></div></div>;
 }
 
 export function Activation() {

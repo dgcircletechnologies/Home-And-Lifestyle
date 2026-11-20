@@ -49,6 +49,8 @@ model EmailVerification {
   tokenHash  String    @unique
   createdAt  DateTime  @default(now())
   expiresAt  DateTime
+  deliveryAcceptedAt DateTime?
+  deliveryFailedAt   DateTime?
   consumedAt DateTime?
   revokedAt  DateTime?
 

@@ -31,19 +31,17 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 | `LOGIN_ACCOUNT_LIMIT` | 10 attempts/address/15 minutes with backoff after 5; stored in PostgreSQL |
 | `AUTH_IP_LIMIT` | 60 auth mutations/IP/15 minutes, per process |
 | `STORE_NAME`, `MAIL_FROM` | Email branding and valid sender address |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | Host SMTP transport, locally localhost:1027 / false; true means implicit TLS |
-| `SMTP_USER`, `SMTP_PASSWORD` | Optional together for authenticated SMTP; server-only |
-| `DOCKER_SMTP_HOST`, `DOCKER_SMTP_PORT` | SMTP inside Docker; mailpit:1025 locally; set to provider host/port for real delivery |
-| `MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT` | Local sandbox ports 1027 and 8027 |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | Outbound provider SMTP host and port; true means implicit TLS. Used by host and backend container. |
+| `SMTP_USER`, `SMTP_PASSWORD` | Provider SMTP credentials, supplied together; server-only |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_NAME`, `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_CONFIRM_VERIFIED` | One-time trusted CLI inputs; never browser variables |
 
-Backend startup validates auth configuration. Production SMTP requires TLS (STARTTLS if not implicit TLS). Real provider delivery also requires a sender/domain approved by your provider. No activation-link logging fallback exists. No production email credentials were configured by this task.
+Backend startup validates the core auth configuration. Missing outbound email settings allow startup but make registration return a retryable send-failure state; malformed SMTP port or sender values are rejected. SMTP requires TLS (STARTTLS if not implicit TLS). Real provider delivery requires a sender/domain approved by your provider. No activation-link logging fallback exists.
 
 ## Local Docker startup
 
 ```sh
 docker compose config --quiet
-docker compose up -d postgres mailpit
+docker compose up -d postgres
 docker compose build backend frontend
 # Read-only migration inspection:
 docker compose run --rm backend npx prisma migrate status
@@ -52,25 +50,24 @@ docker compose run --rm backend npx prisma migrate deploy
 docker compose up -d backend frontend
 ```
 
-Mailpit has a `mail` profile and starts when explicitly named. It is a local sandbox, not a production mail relay. Its unauthenticated SMTP/UI ports bind only to loopback. Do not expose it publicly. The example sender is a `.test` address for this inbox only.
+Compose starts only the frontend, backend, and PostgreSQL. Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, and a provider-approved `MAIL_FROM` in root `.env` before testing outbound delivery. The backend sends directly through that provider using TLS; a provider acceptance means the message was handed off, not that an inbox received it. Failed sends leave the account pending and can be retried at `/check-email`.
 
 - Store: http://localhost:5007
 - Backend readiness: http://localhost:9007/api/health/ready
-- Test inbox: http://localhost:8027
 
 Never reset an existing database or remove its volume. Review `_prisma_migrations`, back up data and reconcile drift before applying migrations. The new activation migration refuses canonical email collisions; resolve any conflicts explicitly rather than merging accounts. It preserves records, adds verification/refresh/throttle storage, leaves existing accounts unverified and revokes legacy opaque sessions. See [schema notes](backend/prisma/README.md).
 
-For host development, run `npm ci` in each app; start only PostgreSQL/Mailpit via Compose, then run `npm run dev` from backend and frontend in separate terminals. Both load root settings; Prisma works directly from `backend/`. Do not simultaneously run host apps and Docker apps on the same ports. Docker images are development/watch images, not production manifests. After changing Prisma schema files while the Docker backend is already running, run `docker compose exec backend npm run prisma:generate` and wait for Nest to rebuild (or restart the backend container). The Nest source watcher does not regenerate Prisma types by itself; an old process may continue serving its previous routes when compilation fails.
+For host development, run `npm ci` in each app; start only PostgreSQL via Compose, then run `npm run dev` from backend and frontend in separate terminals. Both load root settings; Prisma works directly from `backend/`. Do not simultaneously run host apps and Docker apps on the same ports. Docker images are development/watch images, not production manifests. After changing Prisma schema files while the Docker backend is already running, run `docker compose exec backend npm run prisma:generate` and wait for Nest to rebuild (or restart the backend container). The Nest source watcher does not regenerate Prisma types by itself; an old process may continue serving its previous routes when compilation fails.
 
 ## Verify the customer flow
 
 1. Open `/register`, enter full name, email and a unique 8–128-character password, then confirm it. No phone or address is required.
-2. The generic acknowledgement offers resend. Registration creates **no session**.
+2. Registration takes you to `/check-email`. It reports provider acceptance or a send failure accurately and offers resend; registration creates **no session**.
 3. Try `/login` before activation: a correct password yields “Please verify your email before signing in.” A wrong password always yields “Email or password is incorrect.”
-4. Open the email in Mailpit. Its link uses `/activate#token=…`; opening it alone changes nothing. The page removes the fragment from visible history and requires an explicit **Verify email** POST, protecting links from mail scanners/prefetchers. It uses `Referrer-Policy: no-referrer`, has no third-party analytics, and holds the secret only in temporary memory.
+4. Open the email in the designated test recipient inbox. Its link uses `/activate#token=…`; opening it alone changes nothing. The page removes the fragment from visible history and requires an explicit **Verify email** POST, protecting links from mail scanners/prefetchers. It uses `Referrer-Policy: no-referrer`, has no third-party analytics, and holds the secret only in temporary memory.
 5. After verification, select Sign in. Activation never logs in automatically. You can activate in another browser/device.
 6. Sign in, visit `/account`, reload, and try `/admin` as a customer (denied). Logout clears local auth, notifies other tabs and immediately revokes the server session. Other devices remain signed in.
-7. Used/expired/invalid links offer resend. Resend uses generic responses, server-enforced limits and a frontend countdown; use the latest email. A duplicate registration never changes the existing account or invalidates its link.
+7. Used/expired/invalid links offer resend. Resend uses generic responses, server-enforced limits and a frontend countdown; use the latest email. A duplicate registration shows an error and never changes the existing account or invalidates its link.
 
 Password policy supports spaces, Unicode, paste and password managers without composition rules or trimming. The limit is 8–128 Unicode code points. New hashes use Argon2id (64 MiB, time cost 3, parallelism 1); legacy scrypt hashes (N=32768, r=8, p=1) are accepted and upgraded only after an eligible successful login. HIBP Pwned Passwords range checks disclose only the first five SHA-1 hex characters with response padding, not the password/full hash. The SHA-1 is only for lookup, not storage. Password-check outages fail closed with a retryable 503; there is no bypass environment flag.
 
@@ -162,8 +159,8 @@ npx playwright install chromium
 npm test
 ```
 
-Backend HTTP tests require `TEST_DATABASE_URL` pointing to a migrated isolated loopback database named `foundation_test*`; without it, DB integration is explicitly skipped. SMTP integration expects a local test Mailpit on SMTP 1028 / UI 8028 and `SMTP_PORT=1028`. Fixtures use random identities and remain for inspection. The test process mocks only the password range lookup for deterministic API tests; password-policy tests separately exercise range/rejection/failure behavior.
+Backend HTTP tests require `TEST_DATABASE_URL` pointing to a migrated isolated loopback database named `foundation_test*`; without it, DB integration is explicitly skipped. Mail delivery is mocked in isolated API tests; template rendering has separate tests. Fixtures use random identities and remain for inspection. The test process mocks only the password range lookup for deterministic API tests; password-policy tests separately exercise range/rejection/failure behavior.
 
-Browser tests start Next on 3100. Run the backend separately on 3101 against the disposable database with `CORS_ORIGINS` and `FRONTEND_URL` set to http://localhost:3100, SMTP port 1028. The real browser flow uses the live HIBP lookup and the local SMTP inbox. Provision a test admin with the CLI and pass `TEST_ADMIN_EMAIL`/`TEST_ADMIN_PASSWORD` to Playwright. Browser test credentials never enter frontend bundles. Do not use a real customer database or real delivery provider for tests. See [activation verification report](docs/activation-verification.md) for actual results and limitations.
+Browser tests start Next on 3100. Run the backend separately on 3101 against the disposable database with `CORS_ORIGINS` and `FRONTEND_URL` set to http://localhost:3100, the configured provider settings. The optional inbox test requires a separate capture service at `TEST_MAIL_CAPTURE_URL`; Compose does not start one. Provision a test admin with the CLI and pass `TEST_ADMIN_EMAIL`/`TEST_ADMIN_PASSWORD` to Playwright. Browser test credentials never enter frontend bundles. Do not use a real customer database or delivery provider for automated tests. See [activation verification report](docs/activation-verification.md) for actual results and limitations.
 
 Design references: [OWASP authentication](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html), [email verification](https://cheatsheetseries.owasp.org/cheatsheets/Email_Validation_and_Verification_Cheat_Sheet.html), [password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), [JWT best practices, RFC 8725](https://www.rfc-editor.org/rfc/rfc8725.html), and [HIBP range API](https://haveibeenpwned.com/API/v3#PwnedPasswords).
