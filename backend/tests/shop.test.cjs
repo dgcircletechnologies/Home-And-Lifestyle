@@ -57,3 +57,20 @@ test('all five orders sort the full 26-product set before pagination with stable
   assert.equal((await shop.list(query({ sort: 'newest', page: 2 }))).items.some(item => item.id === products[0].id), true);
   assert.equal((await shop.list(query({ sort: 'price-asc', page: 2 }))).items.length, 6);
 });
+test('homepage category rows include descendants, cap cards, and exclude inactive categories', async () => {
+  const child = { ...category, id: 'child', name: 'Bowls', slug: 'bowls', parentId: 'cat' };
+  const inactive = { ...category, id: 'inactive', name: 'Hidden', slug: 'hidden', status: 'INACTIVE' };
+  const products = Array.from({ length: 6 }, (_, i) => ({
+    ...makeProduct(i + 1),
+    categories: [{ categoryId: 'child', category: { name: 'Bowls', slug: 'bowls' } }],
+  }));
+  products[0].categories.push({ categoryId: 'inactive', category: { name: 'Hidden', slug: 'hidden' } });
+  const mocked = db(products);
+  mocked.category.findMany = async () => [category, child, inactive];
+  mocked.productCategory.groupBy = async () => [{ categoryId: 'child', _count: { productId: 6 } }, { categoryId: 'inactive', _count: { productId: 1 } }];
+  const result = await new ShopService(mocked).list(query({ includeCategoryRows: true }));
+  assert.deepEqual(result.categoryRows.map(row => row.slug), ['vases', 'bowls']);
+  assert.deepEqual(result.categoryRows.map(row => row.products.length), [4, 4]);
+  assert.equal(result.categoryRows[0].products[0].id, products[5].id);
+  assert.equal(new Set(result.categoryRows[0].products.map(product => product.id)).size, 4);
+});

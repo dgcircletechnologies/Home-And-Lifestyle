@@ -67,6 +67,10 @@ Status: discovery baseline, 16 November 2026. Sources: the owner's project brief
 
 ## ENG-01 Schema ownership and repository review
 
+- Homepage CTA refinement approval, 20 November 2026 (UX-01, CAT-01, SHP-01, ENG-01): use one scoped, accessible solid storefront-plum CTA style for homepage shopping, gifting, editorial and PIN-check actions, with tonal hover and active states derived from storefront ink. This supersedes the earlier gradient CTA treatment. Keep Shop by Category and each Shop <Category> heading beside its CTA on mobile as well as desktop. Preserve existing destinations, public catalogue rules and editorial imagery.
+
+- Customer homepage category discovery approval, 20 November 2026 (CAT-01, UX-01, MKT-01, ADM-01, ENG-01): retain the homepage editorial and gifting sections, add a local editorial hero placeholder, make category and featured cards horizontally browsable on mobile, and show capped product rows for every active public category. These rows reuse the Shop All card and effective public pricing, with no new commerce policy.
+
 - Customer authentication shell approval, 20 November 2026 (UX-01, ORD-01, ENG-01): login and registration use the existing customer navigation and storefront footer. The forms and authentication policy remain unchanged.
 
 - Customer Shop All visual redesign approval, 20 November 2026 (CAT-01, UX-01, MKT-01, ENG-01): keep the existing guest-readable catalogue and URL-backed filters, sort and pagination at `/shop`, with 20 products per page; use a scoped warm editorial presentation, neutral filter scrim, five visible sort choices, image-led cards and accessible drawer/menu behavior. Active automatic price reductions may show a red offer ribbon on Shop All cards; cart-only coupons do not imply a listing discount. Sold-out Shop All cards show a centered red status over a translucent dark image layer; current prices use green and genuine previous prices use red. This is a presentation and interaction approval; it adds no new commerce policy.

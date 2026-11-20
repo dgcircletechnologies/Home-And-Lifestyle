@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { categoryVisibility, branchIds } from '../categories/category-visibility';
 
-export type ShopInput = { category?: string; material?: string; colour?: string; room?: string; style?: string; size?: string; finish?: string; tag?: string; collection?: string; stock?: 'true'; sale?: 'true'; min?: number; max?: number; sort: 'newest'|'price-asc'|'price-desc'|'name-asc'|'name-desc'; page: number; pageSize: number; search?: string; giftable?: 'true' };
+export type ShopInput = { category?: string; material?: string; colour?: string; room?: string; style?: string; size?: string; finish?: string; tag?: string; collection?: string; stock?: 'true'; sale?: 'true'; min?: number; max?: number; sort: 'newest'|'price-asc'|'price-desc'|'name-asc'|'name-desc'; page: number; pageSize: number; search?: string; giftable?: 'true'; includeCategoryRows?: boolean };
 const groups = ['category','material','colour','room','style','size','finish','tag','collection'] as const;
 type Group = typeof groups[number];
 const selectedValues = (value?: string) => (value ?? '').split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
@@ -53,11 +53,12 @@ export class ShopService {
       if(input.collection === 'new-arrivals' && !entry.product.tags.some(link => link.tag.slug === 'new-arrival' || link.tag.slug === 'new-arrivals')) return [];
       return entry.variants.filter(variant => (!input.stock||variant.stockQuantity>0) && (!input.sale||variant.original!==null) && (input.min===undefined||variant.price>=input.min*100) && (input.max===undefined||variant.price<=input.max*100) && groups.every(group => !selected.get(group)!.length || selected.get(group)!.some(value => variant.facets.get(group)!.has(value))));
     };
-    const cards=entries.flatMap(entry => { const variants=match(entry).sort((a,b)=>a.price-b.price||a.id.localeCompare(b.id)); if(!variants.length)return [];const cheapest=variants[0];return [{id:entry.product.id,name:entry.product.name,slug:entry.product.slug,createdAt:entry.product.createdAt,image:cheapest.images[0]??entry.product.images[0]??null,images:entry.product.images,minPricePaise:cheapest.price,maxPricePaise:variants.at(-1)!.price,compareAtPricePaise:cheapest.original,available:variants.some(v=>v.stockQuantity>0),categories:entry.product.categories.filter(link=>activeIds.includes(link.categoryId)).map(link=>link.category)}]; });
+    const cards=entries.flatMap(entry => { const variants=match(entry).sort((a,b)=>a.price-b.price||a.id.localeCompare(b.id)); if(!variants.length)return [];const cheapest=variants[0];return [{id:entry.product.id,name:entry.product.name,slug:entry.product.slug,createdAt:entry.product.createdAt,image:cheapest.images[0]??entry.product.images[0]??null,images:entry.product.images,minPricePaise:cheapest.price,maxPricePaise:variants.at(-1)!.price,compareAtPricePaise:cheapest.original,available:variants.some(v=>v.stockQuantity>0),categories:entry.product.categories.filter(link=>activeIds.includes(link.categoryId)).map(link=>link.category),categorySlugs:[...variants[0].facets.get('category')!.keys()]}]; });
     cards.sort((a,b)=>{let order=0;if(input.sort==='price-asc')order=a.minPricePaise-b.minPricePaise;else if(input.sort==='price-desc')order=b.minPricePaise-a.minPricePaise;else if(input.sort==='name-asc')order=a.name.localeCompare(b.name,undefined,{sensitivity:'base'});else if(input.sort==='name-desc')order=b.name.localeCompare(a.name,undefined,{sensitivity:'base'});else order=b.createdAt.getTime()-a.createdAt.getTime();return order||a.id.localeCompare(b.id);});
     const total=cards.length,totalPages=Math.ceil(total/input.pageSize),page=Math.min(input.page,Math.max(1,totalPages));
     const filters=Object.fromEntries(groups.map(group=>[group,[...options.get(group)!].map(([value,label])=>({value,label})).sort((a,b)=>a.label.localeCompare(b.label))]));
     const onSale = entries.some(entry => entry.variants.some(variant => variant.original !== null));
-    return {items:cards.slice((page-1)*input.pageSize,page*input.pageSize),total,totalPages,page,pageSize:input.pageSize,filters,onSale};
+    const categoryRows = input.includeCategoryRows ? categories.map(category => ({ slug: category.slug, products: cards.filter(card => card.categorySlugs.includes(category.slug)).slice(0, 4) })).filter(row => row.products.length) : undefined;
+    return {items:cards.slice((page-1)*input.pageSize,page*input.pageSize),total,totalPages,page,pageSize:input.pageSize,filters,onSale,...(categoryRows ? {categoryRows} : {})};
   }
 }

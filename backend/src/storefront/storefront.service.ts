@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import type { Prisma } from '../../generated/prisma/client';
 import { branchIds, categoryVisibility } from '../categories/category-visibility';
+import { ShopService } from './shop.service';
 
 const activeCollection = (now: Date): Prisma.CollectionWhereInput => ({ AND: [{ OR: [{ startsAt: null }, { startsAt: { lte: now } }] }, { OR: [{ endsAt: null }, { endsAt: { gt: now } }] }] });
 const productSelect = {
@@ -15,7 +16,7 @@ type ProductRow = Prisma.ProductGetPayload<{ select: typeof productSelect }>;
 
 @Injectable()
 export class StorefrontService {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly db: PrismaService, private readonly shopService: ShopService) {}
   private async publicProductWhere(): Promise<Prisma.ProductWhereInput> {
     const tree = await categoryVisibility(this.db);
     return { status: 'PUBLISHED', categories: { some: { categoryId: { in: tree.categories.filter(category => tree.isActive(category.id)).map(category => category.id) } } } };
@@ -39,9 +40,19 @@ export class StorefrontService {
   async directory() {
     const tree = await categoryVisibility(this.db);
     const eligible = tree.categories.filter(category => tree.hasProducts(category.id));
+    const children = new Map<string, typeof eligible>();
+    for (const category of eligible) if (category.parentId) children.set(category.parentId, [...(children.get(category.parentId) ?? []), category]);
+    const roots = eligible.filter(category => !category.parentId).sort((a, b) => {
+      const aPosition = a.showInStorefrontNav ? a.storefrontNavPosition : null;
+      const bPosition = b.showInStorefrontNav ? b.storefrontNavPosition : null;
+      return (aPosition ?? Number.MAX_SAFE_INTEGER) - (bPosition ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+    });
+    const ordered: typeof eligible = [];
+    const visit = (category: typeof eligible[number]) => { ordered.push(category); for (const child of children.get(category.id) ?? []) visit(child); };
+    roots.forEach(visit);
     const photos = await this.db.productCategory.findMany({ where: { categoryId: { in: eligible.map(item => item.id) }, product: { status: 'PUBLISHED', images: { some: {} } } }, distinct: ['categoryId'], select: { categoryId: true, product: { select: { images: { orderBy: { position: 'asc' }, take: 1, select: { url: true, altText: true } } } } } });
     const photoByCategory = new Map(photos.map(link => [link.categoryId, link.product.images[0]]));
-    return eligible.map(category => ({ id: category.id, name: category.name, slug: category.slug, parentId: category.parentId, image: category.imageUrl ? { url: category.imageUrl, altText: category.name } : photoByCategory.get(category.id) ?? null }));
+    return ordered.map(category => ({ id: category.id, name: category.name, slug: category.slug, parentId: category.parentId, image: category.imageUrl ? { url: category.imageUrl, altText: category.name } : photoByCategory.get(category.id) ?? null }));
   }
   async menu() {
     const visible = await this.publicProductWhere();
@@ -51,14 +62,15 @@ export class StorefrontService {
   async home() {
     const now = new Date();
     const visible = await this.publicProductWhere();
-    const [categories, featured, latest, giftable, collections] = await Promise.all([
+    const [categories, featured, latest, giftable, collections, shop] = await Promise.all([
       this.directory(),
       this.db.product.findMany({ where: { ...visible, isFeatured: true, variants: { some: {} } }, select: productSelect, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 8 }),
       this.db.product.findMany({ where: { ...visible, variants: { some: {} } }, select: productSelect, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 8 }),
       this.db.product.findMany({ where: { ...visible, giftWrapEligible: true, variants: { some: {} } }, select: productSelect, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 3 }),
       this.db.collection.findMany({ where: { ...activeCollection(now), products: { some: { product: visible } } }, select: { name: true, slug: true, description: true, products: { where: { product: visible }, orderBy: { position: 'asc' }, take: 3, select: { product: { select: productSelect } } } }, orderBy: [{ position: 'asc' }, { name: 'asc' }], take: 6 }),
+      this.shopService.list({ sort: 'newest', page: 1, pageSize: 20, includeCategoryRows: true }),
     ]);
-    return { categories, featured: featured.map(row => this.card(row)), latest: latest.map(row => this.card(row)), giftable: giftable.map(row => this.card(row)), collections: collections.map(row => ({ name: row.name, slug: row.slug, description: row.description, products: row.products.map(link => this.card(link.product)) })) };
+    return { categories, featured: featured.map(row => this.card(row)), latest: latest.map(row => this.card(row)), giftable: giftable.map(row => this.card(row)), collections: collections.map(row => ({ name: row.name, slug: row.slug, description: row.description, products: row.products.map(link => this.card(link.product)) })), categoryRows: shop.categoryRows ?? [] };
   }
   async products(input: { category?: string; collection?: string; search?: string; giftable?: 'true'; page: number }) {
     const visible = await this.publicProductWhere();
