@@ -16,6 +16,7 @@ async function routes(page: import('@playwright/test').Page, signedIn = false, p
   await page.route('**/api/auth/refresh', route => route.fulfill(signedIn ? { json: { user: adminlessCustomer, accessToken: 'test-token', expiresIn: 900 } } : { status: 401, json: { error: { code: 'ACCESS_INVALID', message: 'Sign in.' } } }));
   await page.route('**/api/storefront/products/ceramic-vase', route => route.fulfill({ json: { ...product, images: productImages } }));
   await page.route('**/api/storefront/products/ceramic-vase/reviews?page=1', route => route.fulfill({ json: reviews }));
+  await page.route('**/api/cart/preview', route => { const items = route.request().postDataJSON().items as {variantId:string;quantity:number}[]; return route.fulfill({ json: { currency: 'INR', items: items.map(item => ({ itemId: null, ...item, product: { id: product.id, slug: product.slug, name: product.name, image: imageA }, variant: { id: item.variantId, sku: 'VASE-L', pricePaise: 120000, stockQuantity: 8, attributes: [{ title: 'Size', value: 'Large' }] }, unitPricePaise: 120000, effectiveUnitPricePaise: 100000, automaticDiscountPaise: 20000, couponDiscountPaise: 0, lineTotalPaise: 100000, warning: null })), itemCount: items.reduce((sum, item) => sum + item.quantity, 0), subtotalPaise: items.length * 120000, automaticDiscountPaise: items.length * 20000, couponDiscountPaise: 0, estimatedTotalPaise: items.length * 100000, coupon: null, canCheckout: items.length > 0, note: 'Merchandise estimate.' } }); });
 }
 
 test('gallery, variant stock, tabs, and logged-out review prompt work on desktop and mobile', async ({ page }) => {
@@ -40,7 +41,8 @@ test('gallery, variant stock, tabs, and logged-out review prompt work on desktop
   await expect(page.getByRole('button', { name: /Order Now/ })).toBeDisabled();
   await page.getByRole('button', { name: /^VASE-L,/ }).click();
   await page.getByRole('button', { name: 'Add to Cart' }).click();
-  await expect(page.getByRole('status')).toContainText('Cart coming soon for VASE-L.');
+  await expect(page.getByRole('status')).toContainText('Added to cart.');
+  await expect(page.getByRole('link', { name: 'View Cart' })).toBeVisible();
   await page.getByRole('button', { name: /Order Now/ }).click();
   await expect(page.getByRole('status')).toContainText('Checkout coming soon for VASE-L.');
   await page.getByRole('button', { name: /Rated 4.5 out of 5/ }).click();

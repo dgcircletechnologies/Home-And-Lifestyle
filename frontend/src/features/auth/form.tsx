@@ -9,11 +9,12 @@ import { saveVerificationContext } from './activation';
 import { AuthShell } from './auth-shell';
 import { useAuth } from './provider';
 import { authService, safeReturn } from './service';
+import { useCart } from '../cart/cart-provider';
 
 export function AuthForm({ register = false }: { register?: boolean }) {
   const [busy, setBusy] = useState(false); const lock = useRef(false); const errorSummary = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<ApiError | null>(null);
-  const auth = useAuth(); const router = useRouter();
+  const auth = useAuth(); const cart = useCart(); const router = useRouter();
   useEffect(() => { if (error) errorSummary.current?.focus(); }, [error]);
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (lock.current) return; setError(null);
@@ -23,7 +24,7 @@ export function AuthForm({ register = false }: { register?: boolean }) {
     lock.current = true; setBusy(true);
     try {
       if (register) { const result = await authService.register(String(form.get('name')), email, password); saveVerificationContext({ email, delivery: result.delivery, message: result.message, resendAfterSeconds: result.resendAfterSeconds }); router.replace('/check-email'); }
-      else { const user = await auth.login({ email, password }); router.replace(safeReturn(new URLSearchParams(window.location.search).get('returnTo'), user)); }
+      else { const user = await auth.login({ email, password }); if (user.role === 'CUSTOMER') { try { await cart.mergeGuestAfterLogin(); } catch { /* Keep the guest cart for retry on the next session refresh. */ } } router.replace(safeReturn(new URLSearchParams(window.location.search).get('returnTo'), user)); }
     } catch (reason) {
       if (register && reason instanceof ApiError && reason.code === 'EMAIL_ALREADY_REGISTERED') saveVerificationContext({ email, delivery: 'requested', message: 'Enter your email to request another verification link if your account is not yet active.', resendAfterSeconds: 0 });
       setError(reason instanceof ApiError ? reason : new ApiError(0, 'Please try again.'));
