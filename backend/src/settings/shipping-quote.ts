@@ -23,8 +23,8 @@ const unavailable = (pin: string, reason: string, coverageRule: string) => ({ av
 
 export function evaluateShipping(input: { pinCode: string; coverage: PinCodeServiceability | null; rules: ShippingRule[]; lines: QuoteLine[]; merchandise: Merchandise; policy: QuotePolicy }) {
   const { pinCode: pin, coverage, rules, lines, merchandise, policy } = input;
-  if (!coverage || !coverage.enabled) return unavailable(pin, 'Delivery is unavailable because this PIN is not on the supported list.', 'Unlisted PINs are unavailable');
-  if (!coverage.supported) return unavailable(pin, `Delivery is unavailable because PIN ${pin} is restricted${coverage.reason ? `: ${coverage.reason}` : '.'}`, 'Explicit restriction');
+  if (!/^[1-9][0-9]{5}$/.test(pin)) return unavailable(pin, 'Enter a valid 6-digit Indian PIN code.', 'Invalid PIN');
+  if (coverage?.enabled && !coverage.supported) return unavailable(pin, `Delivery is unavailable because PIN ${pin} is blocked${coverage.reason ? `: ${coverage.reason}` : '.'}`, 'Blocked PIN');
   const qualifyingSubtotalPaise = policy.thresholdBasis === 'BEFORE_DISCOUNTS' ? merchandise.originalMerchandisePaise : merchandise.merchandisePaise;
   const storeRules = rules.filter(rule => rule.enabled && !rule.productId && !rule.categoryId && !rule.pinCode);
   const threshold = storeRules.find(rule => rule.freeShippingThresholdPaise !== null)?.freeShippingThresholdPaise ?? null;
@@ -32,8 +32,8 @@ export function evaluateShipping(input: { pinCode: string; coverage: PinCodeServ
   let baseChargePaise = 0, handlingChargePaise = 0, itemWaivedPaise = 0;
   const lineBreakdown: { name: string; quantity: number; basePaise: number; handlingPaise: number; waivedPaise: number; ruleNames: string[] }[] = [];
   const missing: string[] = [];
-  let dispatchMinDays = coverage.dispatchMinDays, dispatchMaxDays = coverage.dispatchMaxDays;
-  let deliveryMinDays = coverage.deliveryMinDays, deliveryMaxDays = coverage.deliveryMaxDays;
+  let dispatchMinDays = coverage?.dispatchMinDays ?? null, dispatchMaxDays = coverage?.dispatchMaxDays ?? null;
+  let deliveryMinDays = coverage?.deliveryMinDays ?? null, deliveryMaxDays = coverage?.deliveryMaxDays ?? null;
   for (const line of lines) {
     const matches = rules.filter(rule => ruleMatches(rule, line, pin)).map(rule => Object.assign(rule, { rank: rank(rule) }) as Match).sort((a, b) => b.rank - a.rank || (b.pinCode ? 1 : 0) - (a.pinCode ? 1 : 0) || a.id.localeCompare(b.id));
     if (matches.length > 1 && matches[0].rank === matches[1].rank && matches[0].pinCode === matches[1].pinCode) {
@@ -53,10 +53,10 @@ export function evaluateShipping(input: { pinCode: string; coverage: PinCodeServ
     deliveryMinDays ??= first(matches, 'deliveryMinDays'); deliveryMaxDays ??= first(matches, 'deliveryMaxDays');
     lineBreakdown.push({ name: line.name, quantity: line.quantity, basePaise: base, handlingPaise: handling, waivedPaise: included ? Number(rawBase ?? 0) : 0, ruleNames: matches.map(rule => rule.name) });
   }
-  if (missing.length) return { ...unavailable(pin, `Delivery is supported, but no base rate can price ${missing.join(', ')}. Configure a default or matching rate.`, 'Supported PIN'), available: true, missingMeasurementsOrRate: missing };
+  if (missing.length) return { ...unavailable(pin, `Delivery is available, but no base rate can price ${missing.join(', ')}. Configure a default or matching rate.`, 'Deliverable PIN'), available: true, missingMeasurementsOrRate: missing };
   const waivedBasePaise = thresholdMet ? baseChargePaise : 0;
   const waivedHandlingPaise = thresholdMet && policy.waiveHandlingOnFree ? handlingChargePaise : 0;
   const finalChargePaise = baseChargePaise + handlingChargePaise - waivedBasePaise - waivedHandlingPaise;
   const reason = thresholdMet ? `Base delivery waived because the ${policy.thresholdBasis === 'BEFORE_DISCOUNTS' ? 'pre-discount' : 'post-discount'} merchandise subtotal reached the free-delivery threshold.${policy.waiveHandlingOnFree ? ' Handling is waived too.' : ' Eligible handling charges remain.'}` : 'Delivery is available; charges follow the saved matching rules.';
-  return { available: true, priced: true, pinCode: pin, coverageRule: 'Supported PIN', reason, currency: 'INR' as const, qualifyingSubtotalPaise, thresholdPaise: threshold, thresholdBasis: policy.thresholdBasis, baseChargePaise, handlingChargePaise, waivedBasePaise, waivedHandlingPaise, itemWaivedPaise, finalChargePaise, merchandise, lineBreakdown, estimate: { dispatchMinDays, dispatchMaxDays, deliveryMinDays, deliveryMaxDays }, source: 'saved rules' };
+  return { available: true, priced: true, pinCode: pin, coverageRule: 'Deliverable PIN', reason, currency: 'INR' as const, qualifyingSubtotalPaise, thresholdPaise: threshold, thresholdBasis: policy.thresholdBasis, baseChargePaise, handlingChargePaise, waivedBasePaise, waivedHandlingPaise, itemWaivedPaise, finalChargePaise, merchandise, lineBreakdown, estimate: { dispatchMinDays, dispatchMaxDays, deliveryMinDays, deliveryMaxDays }, source: 'saved rules' };
 }

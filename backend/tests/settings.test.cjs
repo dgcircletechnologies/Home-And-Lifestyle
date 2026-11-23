@@ -8,10 +8,12 @@ const line = { productId:'p1',variantId:'v1',name:'Vase',quantity:1,categoryIds:
 const merchandise = (value, discount=0) => ({originalMerchandisePaise:value,merchandisePaise:value-discount,automaticPaise:discount,couponPaise:0});
 const input = (overrides={}) => ({pinCode:'110001',coverage:pin,rules:[base],lines:[line],merchandise:merchandise(199900),policy:{thresholdBasis:'AFTER_DISCOUNTS',waiveHandlingOnFree:false},...overrides});
 
-test('restricted and unlisted PINs win over free delivery',()=>{
+test('only active blocked PINs win over free delivery',()=>{
   const expensive=input({merchandise:merchandise(300000)});
   assert.equal(evaluateShipping({...expensive,coverage:{...pin,supported:false}}).available,false);
-  assert.equal(evaluateShipping({...expensive,coverage:null}).available,false);
+  assert.equal(evaluateShipping({...expensive,coverage:null}).available,true);
+  assert.equal(evaluateShipping({...expensive,coverage:{...pin,supported:false,enabled:false}}).available,true);
+  assert.equal(evaluateShipping({...expensive,pinCode:'010001'}).available,false);
 });
 test('threshold boundaries and discount basis use integer paise',()=>{
   assert.equal(evaluateShipping(input()).finalChargePaise,11400);

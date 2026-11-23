@@ -11,6 +11,9 @@ model PaymentAttempt {
   currency          String        @default("INR")
   status            PaymentStatus @default(PENDING)
   failureCode       String?
+  failureReason     String?
+  providerSignature String?
+  paidAt            DateTime?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   order             Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)

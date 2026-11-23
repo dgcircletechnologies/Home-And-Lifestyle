@@ -32,8 +32,11 @@ async function reject(sql, code) {
     ('address-a','customer','Asha','9876543210','First Road','Pune','Maharashtra','411001'),
     ('address-b','customer','Asha','9876543210','Second Road','Pune','Maharashtra','411001');`);
   await db.query(migration('20261123064652_customer_address_defaults'));
+  await db.query(migration('20261123092637_razorpay_customer_checkout'));
   const addressDefaults = (await db.query(`SELECT id,"isDefault",label FROM "CustomerAddress" ORDER BY id`)).rows;
   assert.deepEqual(addressDefaults, [{ id: 'address-a', isDefault: true, label: null }, { id: 'address-b', isDefault: false, label: null }]);
+  const newOrderFields = (await db.query(`SELECT column_name FROM information_schema.columns WHERE table_name='Order' AND column_name IN ('billingAddress','sourceMode','couponCodeSnapshot') ORDER BY column_name`)).rows.map(row => row.column_name);
+  assert.deepEqual(newOrderFields, ['billingAddress', 'couponCodeSnapshot', 'sourceMode']);
   await reject(`UPDATE "CustomerAddress" SET "isDefault"=true WHERE id='address-b'`, '23505');
   await db.query(`INSERT INTO "Category" (id,name,slug,"updatedAt") VALUES ('category','Existing category','existing-category',now())`);
   const category = (await db.query(`SELECT status,"deletedAt","imageUrl" FROM "Category" WHERE id='category'`)).rows[0];

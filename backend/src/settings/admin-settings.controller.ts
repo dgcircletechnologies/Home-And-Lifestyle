@@ -13,7 +13,7 @@ const days = z.number().int().min(0).max(365).nullable().default(null);
 const store = z.object({ version, storeName: z.string().trim().min(1).max(100), supportEmail: emailSchema.nullable(), supportPhone: z.string().trim().regex(/^\+?[0-9()\s-]{7,25}$/).nullable(), publicAddress: z.string().trim().max(500).nullable() }).strict();
 const gifting = z.object({ version, giftWrapDefaultEligible: z.boolean(), giftMessagesAvailable: z.boolean(), giftReceiptsAvailable: z.boolean(), giftWrapFeePaise: paise }).strict();
 const shipping = z.object({ version, thresholdBasis: z.enum(['BEFORE_DISCOUNTS', 'AFTER_DISCOUNTS']), waiveHandlingOnFree: z.boolean() }).strict();
-const pinBatch = z.object({ version, pinCodes: z.array(pin).min(1).max(100).refine(values => new Set(values).size === values.length, 'Remove duplicate PIN codes.'), supported: z.boolean(), enabled: z.boolean(), reason: z.string().trim().max(250).nullable().optional(), dispatchMinDays: days.optional(), dispatchMaxDays: days.optional(), deliveryMinDays: days.optional(), deliveryMaxDays: days.optional() }).strict();
+const blockPin = z.object({ version, pinCode: pin, reason: z.string().trim().max(250).nullable().optional() }).strict();
 const rule = z.object({
   name: z.string().trim().min(1).max(120), enabled: z.boolean(), pinCode: pin.nullable().default(null), productId: uuid.nullable().default(null), categoryId: uuid.nullable().default(null),
   minWeightGrams: optionalNumber, maxWeightGrams: optionalNumber, minLengthMm: optionalNumber, maxLengthMm: optionalNumber, minWidthMm: optionalNumber, maxWidthMm: optionalNumber, minHeightMm: optionalNumber, maxHeightMm: optionalNumber,
@@ -23,7 +23,6 @@ const rule = z.object({
 const ruleSave = z.object({ version, rule }).strict();
 const remove = z.object({ version }).strict();
 const list = z.object({ search: z.string().trim().max(100).optional(), page: z.coerce.number().int().min(1).default(1) }).strict();
-const pinList = list.extend({ state: z.enum(['supported', 'restricted', 'disabled']).optional() }).strict();
 const quote = z.object({ pinCode: pin, items: z.array(z.object({ productId: uuid, variantId: uuid, quantity: z.number().int().min(1).max(100) }).strict()).min(1).max(50), code: z.string().trim().max(40).optional() }).strict();
 
 @Roles('ADMIN') @Controller('admin/settings')
@@ -33,9 +32,9 @@ export class AdminSettingsController {
   @Patch('store') updateStore(@Body() body: unknown) { return this.settings.updateStore(parse(store, body)); }
   @Get('shipping') shipping() { return this.settings.shipping(); }
   @Patch('shipping') updateShipping(@Body() body: unknown) { return this.settings.updateShipping(parse(shipping, body)); }
-  @Get('shipping/pins') pins(@Query() query: unknown) { return this.settings.pins(parse(pinList, query)); }
-  @Post('shipping/pins') savePins(@Body() body: unknown) { return this.settings.savePins(parse(pinBatch, body)); }
-  @Delete('shipping/pins/:pinCode') removePin(@Param('pinCode') value: string, @Body() body: unknown) { return this.settings.removePin(parse(pin, value), parse(remove, body).version); }
+  @Get('shipping/pins') pins(@Query() query: unknown) { return this.settings.pins(parse(list, query)); }
+  @Post('shipping/pins') blockPin(@Body() body: unknown) { return this.settings.blockPin(parse(blockPin, body)); }
+  @Delete('shipping/pins/:pinCode') unblockPin(@Param('pinCode') value: string, @Body() body: unknown) { return this.settings.unblockPin(parse(pin, value), parse(remove, body).version); }
   @Get('shipping/rules') rules(@Query() query: unknown) { return this.settings.rules(parse(list, query)); }
   @Post('shipping/rules') createRule(@Body() body: unknown) { return this.settings.saveRule(parse(ruleSave, body)); }
   @Patch('shipping/rules/:id') updateRule(@Param('id') id: string, @Body() body: unknown) { return this.settings.saveRule(parse(ruleSave, body), parse(uuid, id)); }

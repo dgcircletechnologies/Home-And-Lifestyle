@@ -45,37 +45,39 @@ export class AdminSettingsService {
       return { giftWrapDefaultEligible: c.giftWrapDefaultEligible, giftMessagesAvailable: c.giftMessagesAvailable, giftReceiptsAvailable: c.giftReceiptsAvailable, giftWrapFeePaise: c.giftWrapFeePaise, version: c.giftingVersion, enquiryRouting: 'not configured' };
     });
   }
-  async shipping() { const c = await this.config(); return { version: c.shippingVersion, coveragePolicy: 'LISTED_ONLY', thresholdBasis: c.thresholdBasis, waiveHandlingOnFree: c.waiveHandlingOnFree, currency: 'INR', weightUnit: 'grams', dimensionUnit: 'millimetres' }; }
+  async shipping() { const c = await this.config(); return { version: c.shippingVersion, coveragePolicy: 'BLOCKLIST', thresholdBasis: c.thresholdBasis, waiveHandlingOnFree: c.waiveHandlingOnFree, currency: 'INR', weightUnit: 'grams', dimensionUnit: 'millimetres' }; }
   async updateShipping(input: { version: number; thresholdBasis: 'BEFORE_DISCOUNTS' | 'AFTER_DISCOUNTS'; waiveHandlingOnFree: boolean }) {
     await this.config();
     return this.db.$transaction(async tx => {
       const result = await tx.storeSettings.updateMany({ where: { id: 'store', shippingVersion: input.version }, data: { thresholdBasis: input.thresholdBasis, waiveHandlingOnFree: input.waiveHandlingOnFree, shippingVersion: { increment: 1 } } });
       if (!result.count) throw stale();
-      return { version: input.version + 1, coveragePolicy: 'LISTED_ONLY', thresholdBasis: input.thresholdBasis, waiveHandlingOnFree: input.waiveHandlingOnFree, currency: 'INR', weightUnit: 'grams', dimensionUnit: 'millimetres' };
+      return { version: input.version + 1, coveragePolicy: 'BLOCKLIST', thresholdBasis: input.thresholdBasis, waiveHandlingOnFree: input.waiveHandlingOnFree, currency: 'INR', weightUnit: 'grams', dimensionUnit: 'millimetres' };
     });
   }
-  async pins(query: { search?: string; page: number; state?: 'supported' | 'restricted' | 'disabled' }) {
-    const where: Prisma.PinCodeServiceabilityWhereInput = { ...(query.search ? { pinCode: { startsWith: query.search } } : {}), ...(query.state === 'disabled' ? { enabled: false } : query.state ? { enabled: true, supported: query.state === 'supported' } : {}) };
+  async pins(query: { search?: string; page: number }) {
+    const where: Prisma.PinCodeServiceabilityWhereInput = { enabled: true, supported: false, ...(query.search ? { pinCode: { startsWith: query.search } } : {}) };
     const [total, items] = await this.db.$transaction([this.db.pinCodeServiceability.count({ where }), this.db.pinCodeServiceability.findMany({ where, orderBy: { pinCode: 'asc' }, skip: (query.page - 1) * 50, take: 50 })]);
     return { items, total, page: query.page, pageSize: 50 };
   }
-  async savePins(input: { version: number; pinCodes: string[]; supported: boolean; enabled: boolean; reason?: string | null; dispatchMinDays?: number | null; dispatchMaxDays?: number | null; deliveryMinDays?: number | null; deliveryMaxDays?: number | null }) {
+  async blockPin(input: { version: number; pinCode: string; reason?: string | null }) {
     await this.config();
-    if (!rangeValid(input.dispatchMinDays, input.dispatchMaxDays) || !rangeValid(input.deliveryMinDays, input.deliveryMaxDays)) throw invalid('Minimum estimate must not exceed maximum.');
     return this.db.$transaction(async tx => {
+      const existing = await tx.pinCodeServiceability.findUnique({ where: { pinCode: input.pinCode } });
+      if (existing?.enabled && !existing.supported) throw new ConflictException({ code: 'PIN_ALREADY_BLOCKED', message: `PIN ${input.pinCode} is already blocked.` });
       const changed = await tx.storeSettings.updateMany({ where: { id: 'store', shippingVersion: input.version }, data: { shippingVersion: { increment: 1 } } });
       if (!changed.count) throw stale();
-      for (const pinCode of input.pinCodes) await tx.pinCodeServiceability.upsert({ where: { pinCode }, create: { pinCode, supported: input.supported, enabled: input.enabled, reason: input.reason ?? null, dispatchMinDays: input.dispatchMinDays ?? null, dispatchMaxDays: input.dispatchMaxDays ?? null, deliveryMinDays: input.deliveryMinDays ?? null, deliveryMaxDays: input.deliveryMaxDays ?? null }, update: { supported: input.supported, enabled: input.enabled, reason: input.reason ?? null, dispatchMinDays: input.dispatchMinDays ?? null, dispatchMaxDays: input.dispatchMaxDays ?? null, deliveryMinDays: input.deliveryMinDays ?? null, deliveryMaxDays: input.deliveryMaxDays ?? null } });
-      return { version: input.version + 1, count: input.pinCodes.length };
+      await tx.pinCodeServiceability.upsert({ where: { pinCode: input.pinCode }, create: { pinCode: input.pinCode, supported: false, enabled: true, reason: input.reason ?? null }, update: { supported: false, enabled: true, reason: input.reason ?? null } });
+      return { version: input.version + 1, pinCode: input.pinCode };
     });
   }
-  async removePin(pinCode: string, version: number) {
+  async unblockPin(pinCode: string, version: number) {
     await this.config();
     return this.db.$transaction(async tx => {
+      const blocked = await tx.pinCodeServiceability.findFirst({ where: { pinCode, enabled: true, supported: false } });
+      if (!blocked) throw new NotFoundException('Blocked PIN not found.');
       const changed = await tx.storeSettings.updateMany({ where: { id: 'store', shippingVersion: version }, data: { shippingVersion: { increment: 1 } } });
       if (!changed.count) throw stale();
-      const removed = await tx.pinCodeServiceability.deleteMany({ where: { pinCode } });
-      if (!removed.count) throw new NotFoundException('PIN not found.');
+      await tx.pinCodeServiceability.update({ where: { pinCode }, data: { supported: true } });
       return { version: version + 1, pinCode };
     });
   }

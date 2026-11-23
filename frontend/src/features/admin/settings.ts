@@ -1,22 +1,30 @@
 import { api } from '../../lib/api';
 
 export type StoreDetails = { storeName: string; supportEmail: string | null; supportPhone: string | null; publicAddress: string | null; version: number; market: string; currency: string; language: string; timezone: string };
-export type ShippingPolicy = { version: number; coveragePolicy: 'LISTED_ONLY'; thresholdBasis: 'BEFORE_DISCOUNTS' | 'AFTER_DISCOUNTS'; waiveHandlingOnFree: boolean; currency: 'INR'; weightUnit: string; dimensionUnit: string };
+export type ShippingPolicy = { version: number };
 export type GiftingSettings = { version: number; giftWrapDefaultEligible: boolean; giftMessagesAvailable: boolean; giftReceiptsAvailable: boolean; giftWrapFeePaise: number; enquiryRouting: string };
-export type PinEntry = { pinCode: string; supported: boolean; enabled: boolean; reason: string | null; dispatchMinDays: number | null; dispatchMaxDays: number | null; deliveryMinDays: number | null; deliveryMaxDays: number | null };
-export type ShippingRule = { id: string; name: string; enabled: boolean; pinCode: string | null; productId: string | null; categoryId: string | null; product?: { name: string } | null; category?: { name: string } | null; minWeightGrams: number | null; maxWeightGrams: number | null; minLengthMm: number | null; maxLengthMm: number | null; minWidthMm: number | null; maxWidthMm: number | null; minHeightMm: number | null; maxHeightMm: number | null; baseChargePaise: number | null; fragileChargePaise: number | null; bulkyChargePaise: number | null; freeShippingThresholdPaise: number | null; shippingIncluded: boolean | null; freeShipping: boolean | null; dispatchMinDays: number | null; dispatchMaxDays: number | null; deliveryMinDays: number | null; deliveryMaxDays: number | null };
+export type PinEntry = { pinCode: string; supported: false; enabled: true; reason: string | null };
 export type Page<T> = { items: T[]; total: number; page: number; pageSize: number };
-export type ProductOption = { id: string; name: string; status?: string; variants?: { id: string; sku: string; pricePaise: number }[] };
-export type ShippingQuote = { available: boolean; priced: boolean; pinCode: string; coverageRule: string; reason: string; currency: 'INR'; qualifyingSubtotalPaise?: number; thresholdPaise?: number | null; thresholdBasis?: string; baseChargePaise?: number; handlingChargePaise?: number; waivedBasePaise?: number; waivedHandlingPaise?: number; finalChargePaise?: number; merchandise?: { originalMerchandisePaise: number; merchandisePaise: number; automaticPaise: number; couponPaise: number }; lineBreakdown?: { name: string; quantity: number; basePaise: number; handlingPaise: number; waivedPaise: number; ruleNames: string[] }[]; estimate?: { dispatchMinDays: number | null; dispatchMaxDays: number | null; deliveryMinDays: number | null; deliveryMaxDays: number | null } };
+
 const base = 'admin/settings';
 export const settingsService = {
-  store: () => api<StoreDetails>(`${base}/store`), saveStore: (value: Pick<StoreDetails,'version'|'storeName'|'supportEmail'|'supportPhone'|'publicAddress'>) => api<StoreDetails>(`${base}/store`, { method: 'PATCH', body: value }),
-  shipping: () => api<ShippingPolicy>(`${base}/shipping`), saveShipping: (value: Pick<ShippingPolicy,'version'|'thresholdBasis'|'waiveHandlingOnFree'>) => api<ShippingPolicy>(`${base}/shipping`, { method: 'PATCH', body: value }),
-  gifting: () => api<GiftingSettings>(`${base}/gifting`), saveGifting: (value: Pick<GiftingSettings,'version'|'giftWrapDefaultEligible'|'giftMessagesAvailable'|'giftReceiptsAvailable'|'giftWrapFeePaise'>) => api<GiftingSettings>(`${base}/gifting`, { method: 'PATCH', body: value }),
-  pins: (query: URLSearchParams) => api<Page<PinEntry>>(`${base}/shipping/pins?${query}`), savePins: (body: unknown) => api<{version:number;count:number}>(`${base}/shipping/pins`, { method: 'POST', body }), removePin: (pin: string, version: number) => api(`${base}/shipping/pins/${pin}`, { method: 'DELETE', body: { version } }),
-  rules: (query: URLSearchParams) => api<Page<ShippingRule>>(`${base}/shipping/rules?${query}`), saveRule: (rule: unknown, version: number, id?: string) => api<{rule:ShippingRule;version:number}>(`${base}/shipping/rules${id?`/${id}`:''}`, { method: id?'PATCH':'POST', body: { rule, version } }), removeRule: (id: string, version: number) => api(`${base}/shipping/rules/${id}`, { method:'DELETE', body:{version} }),
-  quote: (body: unknown) => api<ShippingQuote>(`${base}/shipping/quote`, { method:'POST', body }),
-  options: (type: 'product' | 'category', search = '') => api<ProductOption[]>(`admin/promotions/options?type=${type}&search=${encodeURIComponent(search)}&page=1`),
+  store: () => api<StoreDetails>(base + '/store'),
+  saveStore: (value: Pick<StoreDetails, 'version' | 'storeName' | 'supportEmail' | 'supportPhone' | 'publicAddress'>) =>
+    api<StoreDetails>(base + '/store', { method: 'PATCH', body: value }),
+  shipping: () => api<ShippingPolicy>(base + '/shipping'),
+  gifting: () => api<GiftingSettings>(base + '/gifting'),
+  saveGifting: (value: Pick<GiftingSettings, 'version' | 'giftWrapDefaultEligible' | 'giftMessagesAvailable' | 'giftReceiptsAvailable' | 'giftWrapFeePaise'>) =>
+    api<GiftingSettings>(base + '/gifting', { method: 'PATCH', body: value }),
+  pins: (query: URLSearchParams) => api<Page<PinEntry>>(base + '/shipping/pins?' + query),
+  blockPin: (body: { version: number; pinCode: string; reason: string | null }) =>
+    api<{ version: number; pinCode: string }>(base + '/shipping/pins', { method: 'POST', body }),
+  unblockPin: (pin: string, version: number) =>
+    api(base + '/shipping/pins/' + pin, { method: 'DELETE', body: { version } }),
 };
-export const money = (paise: number) => new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'}).format(paise/100);
-export function parseRupees(value: string): number | null { if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value.trim())) return null; const [whole, fraction=''] = value.trim().split('.'); const paise = Number(whole)*100+Number(fraction.padEnd(2,'0')); return Number.isSafeInteger(paise)&&paise<=100_000_000?paise:null; }
+export const money = (paise: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(paise / 100);
+export function parseRupees(value: string): number | null {
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value.trim())) return null;
+  const [whole, fraction = ''] = value.trim().split('.');
+  const paise = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+  return Number.isSafeInteger(paise) && paise <= 100_000_000 ? paise : null;
+}

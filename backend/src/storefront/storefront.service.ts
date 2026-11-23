@@ -154,6 +154,7 @@ export class StorefrontService {
   }
   async serviceability(pinCode: string) {
     const record = await this.db.pinCodeServiceability.findUnique({ where: { pinCode }, select: { supported: true, enabled: true } });
-    return { pinCode, available: Boolean(record?.enabled && record.supported), message: record?.enabled && record.supported ? 'Delivery is available for this PIN. Final charges and dates depend on your items.' : 'Delivery is not available for this PIN.' };
+    const available = !(record?.enabled && !record.supported);
+    return { pinCode, available, message: available ? 'Delivery is available for this PIN. Final charges and dates depend on your items.' : 'Delivery is not available for this PIN.' };
   }
 }

@@ -1,81 +1,154 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+
+import { useCallback, useEffect, useState } from 'react';
 import { ApiError } from '../../lib/api';
-import { money, parseRupees, settingsService, type Page, type PinEntry, type ProductOption, type ShippingPolicy, type ShippingQuote, type ShippingRule } from './settings';
+import { settingsService, type Page, type PinEntry } from './settings';
 
-const card='min-w-0 rounded-[var(--hl-radius)] border border-[var(--hl-border)] bg-white p-5 sm:p-6';
-const input='mt-1 w-full rounded-xl border border-[var(--hl-border)] bg-white px-3 py-2.5 text-sm focus:border-[var(--hl-primary)]';
-const primary='min-h-10 rounded-xl bg-[var(--hl-primary)] px-5 text-sm font-bold text-white disabled:opacity-50';
-const secondary='min-h-10 rounded-xl border border-[var(--hl-border)] px-4 text-sm font-bold disabled:opacity-50';
-const failure=(error:unknown)=>error instanceof ApiError?error.message:'The request failed. Please try again.';
-const pinPattern=/^[1-9][0-9]{5}$/;
-const numberOrNull=(value:string)=>value===''?null:Number(value);
+const card = 'min-w-0 rounded-[var(--hl-radius)] border border-[var(--hl-border)] bg-white p-5 sm:p-6';
+const input = 'mt-1 w-full rounded-xl border border-[var(--hl-border)] bg-white px-3 py-2.5 text-sm focus:border-[var(--hl-primary)]';
+const primary = 'min-h-11 rounded-xl bg-[var(--hl-primary)] px-5 text-sm font-bold text-white disabled:opacity-50';
+const failure = (error: unknown) => error instanceof ApiError ? error.message : 'The request failed. Please try again.';
+const pinPattern = /^[1-9][0-9]{5}$/;
 
-export function ShippingSection({onDirty}:{onDirty:(value:boolean)=>void}){
-  const [saved,setSaved]=useState<ShippingPolicy>(),[basis,setBasis]=useState<'BEFORE_DISCOUNTS'|'AFTER_DISCOUNTS'>('AFTER_DISCOUNTS'),[waive,setWaive]=useState(false),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[notice,setNotice]=useState(''),[coverageDirty,setCoverageDirty]=useState(false),[ruleDirty,setRuleDirty]=useState(false),[revision,setRevision]=useState(0);
-  const load=useCallback(async()=>{const v=await settingsService.shipping();setSaved(v);setBasis(v.thresholdBasis);setWaive(v.waiveHandlingOnFree);setError('');setLoading(false)},[]);
-  useEffect(()=>{let live=true;settingsService.shipping().then(v=>{if(live){setSaved(v);setBasis(v.thresholdBasis);setWaive(v.waiveHandlingOnFree);setLoading(false)}}).catch(e=>{if(live){setError(failure(e));setLoading(false)}});return()=>{live=false}},[]);
-  const policyDirty=Boolean(saved&&(basis!==saved.thresholdBasis||waive!==saved.waiveHandlingOnFree));
-  useEffect(()=>onDirty(policyDirty||coverageDirty||ruleDirty),[policyDirty,coverageDirty,ruleDirty,onDirty]);
-  const changed=async(version:number)=>{const v=await settingsService.shipping();setSaved({...v,version});setRevision(n=>n+1)};
-  const save=async()=>{if(!saved)return;setBusy(true);setError('');setNotice('');try{const v=await settingsService.saveShipping({version:saved.version,thresholdBasis:basis,waiveHandlingOnFree:waive});setSaved(v);setNotice('Shipping policy saved. The tester now uses these saved rules.')}catch(e){setError(failure(e))}finally{setBusy(false)}};
-  if(loading)return <div role="status" className={card}>Loading shipping settings…</div>;
-  if(!saved)return <div role="alert" className={card}>{error}<button className="ml-2 underline" onClick={()=>void load()}>Retry</button></div>;
-  return <div className="grid min-w-0 gap-5"><section className={card}><h2 className="text-2xl">Shipping &amp; Delivery</h2><p className="mt-2 text-sm text-[var(--hl-muted)]">Only explicitly supported Indian PINs are serviceable. A restricted entry always wins over a free-delivery offer. An unlisted or disabled PIN is unavailable.</p><div className="mt-5 grid gap-4 sm:grid-cols-2"><label className="text-sm font-bold">Free-delivery threshold uses<select value={basis} onChange={e=>setBasis(e.target.value as typeof basis)} className={input}><option value="AFTER_DISCOUNTS">Merchandise after discounts</option><option value="BEFORE_DISCOUNTS">Merchandise before discounts</option></select></label><label className="flex items-center gap-3 rounded-xl border border-[var(--hl-border)] p-3 text-sm font-bold"><input type="checkbox" checked={waive} onChange={e=>setWaive(e.target.checked)} className="size-5 accent-[var(--hl-primary)]"/>Free delivery also waives fragile and bulky handling</label></div><p className="mt-3 text-xs text-[var(--hl-muted)]">Base delivery is charged once per mixed cart. Product and category overrides are resolved before PIN and store rates. The highest applicable base rate is used; handling is charged per eligible unit.</p>{error&&<p role="alert" className="mt-4 text-sm text-[var(--hl-error)]">{error}</p>}{notice&&<p role="status" className="mt-4 text-sm text-[var(--hl-success)]">{notice}</p>}<div className="mt-5 flex justify-end"><button type="button" disabled={!policyDirty||busy} onClick={()=>void save()} className={primary}>{busy?'Saving…':'Save shipping policy'}</button></div></section>
-    <CoverageManager version={saved.version} changed={changed} onDirty={setCoverageDirty} revision={revision}/>
-    <RulesManager version={saved.version} changed={changed} onDirty={setRuleDirty} revision={revision}/>
-    <QuoteTester key={revision} hasDraft={policyDirty||coverageDirty||ruleDirty}/>
+export function ShippingSection({ onDirty }: { onDirty: (value: boolean) => void }) {
+  const [version, setVersion] = useState<number>();
+  const [error, setError] = useState('');
+  const [revision, setRevision] = useState(0);
+  const load = useCallback(async () => {
+    const shipping = await settingsService.shipping();
+    setVersion(shipping.version);
+    setError('');
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    settingsService.shipping()
+      .then(shipping => { if (live) setVersion(shipping.version); })
+      .catch(cause => { if (live) setError(failure(cause)); });
+    return () => { live = false; };
+  }, []);
+
+  if (version === undefined) {
+    return <section className={card} role={error ? 'alert' : 'status'}>
+      {error || 'Loading delivery settings…'}
+      {error && <button type="button" className="ml-2 underline" onClick={() => void load().catch(cause => setError(failure(cause)))}>Retry</button>}
+    </section>;
+  }
+
+  return <div className="grid min-w-0 gap-5">
+    <section className={card}>
+      <h2 className="text-2xl">Shipping &amp; Delivery</h2>
+      <p className="mt-2 text-sm text-[var(--hl-muted)]">Shipping is included in product cost. Checkout adds ₹0 in separate shipping fees.</p>
+    </section>
+    <RestrictedPinManager
+      version={version}
+      revision={revision}
+      onDirty={onDirty}
+      changed={nextVersion => { setVersion(nextVersion); setRevision(current => current + 1); }}
+    />
   </div>;
 }
 
-function CoverageManager({version,changed,onDirty,revision}:{version:number;changed:(version:number)=>Promise<void>;onDirty:(value:boolean)=>void;revision:number}){
-  const [data,setData]=useState<Page<PinEntry>>(),[search,setSearch]=useState(''),[state,setState]=useState(''),[page,setPage]=useState(1),[text,setText]=useState(''),[supported,setSupported]=useState(true),[enabled,setEnabled]=useState(true),[reason,setReason]=useState(''),[dispatchMin,setDispatchMin]=useState(''),[dispatchMax,setDispatchMax]=useState(''),[deliveryMin,setDeliveryMin]=useState(''),[deliveryMax,setDeliveryMax]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[retry,setRetry]=useState(0);
-  const tokens=useMemo(()=>text.split(/[\s,]+/).map(v=>v.trim()).filter(Boolean),[text]);
-  const valid=tokens.filter(v=>pinPattern.test(v)),invalid=tokens.filter(v=>!pinPattern.test(v)),duplicates=valid.filter((v,i)=>valid.indexOf(v)!==i),unique=[...new Set(valid)];
-  useEffect(()=>onDirty(Boolean(text||reason||dispatchMin||dispatchMax||deliveryMin||deliveryMax)),[text,reason,dispatchMin,dispatchMax,deliveryMin,deliveryMax,onDirty]);
-  useEffect(()=>{let live=true;const q=new URLSearchParams({page:String(page)});if(search)q.set('search',search);if(state)q.set('state',state);settingsService.pins(q).then(v=>{if(live){setData(v);setError('')}}).catch(e=>{if(live)setError(failure(e))});return()=>{live=false}},[search,state,page,retry,revision]);
-  const reset=()=>{setText('');setReason('');setDispatchMin('');setDispatchMax('');setDeliveryMin('');setDeliveryMax('');setSupported(true);setEnabled(true)};
-  const edit=(pin:PinEntry)=>{setText(pin.pinCode);setSupported(pin.supported);setEnabled(pin.enabled);setReason(pin.reason??'');setDispatchMin(pin.dispatchMinDays?.toString()??'');setDispatchMax(pin.dispatchMaxDays?.toString()??'');setDeliveryMin(pin.deliveryMinDays?.toString()??'');setDeliveryMax(pin.deliveryMaxDays?.toString()??'');document.getElementById('pin-batch')?.focus()};
-  const save=async()=>{if(!unique.length||invalid.length||duplicates.length){setError('Remove invalid or duplicate PIN codes before applying.');return}const values=[dispatchMin,dispatchMax,deliveryMin,deliveryMax].map(numberOrNull);if(values.some(v=>v!==null&&(!Number.isInteger(v)||v<0||v>365))||(values[0]!==null&&values[1]!==null&&values[0]>values[1])||(values[2]!==null&&values[3]!==null&&values[2]>values[3])){setError('Use valid day ranges with each minimum no greater than its maximum.');return}setBusy(true);setError('');setNotice('');try{const result=await settingsService.savePins({version,pinCodes:unique,supported,enabled,reason:reason.trim()||null,dispatchMinDays:values[0],dispatchMaxDays:values[1],deliveryMinDays:values[2],deliveryMaxDays:values[3]});await changed(result.version);reset();setNotice(`${result.count} PIN ${result.count===1?'entry':'entries'} saved.`);setRetry(n=>n+1)}catch(e){setError(failure(e))}finally{setBusy(false)}};
-  const remove=async(pin:PinEntry)=>{if(!confirm(`Remove delivery coverage for PIN ${pin.pinCode}? It will become unlisted and unavailable.`))return;setBusy(true);setError('');try{await settingsService.removePin(pin.pinCode,version);await changed(version+1);setNotice(`PIN ${pin.pinCode} removed.`);setRetry(n=>n+1)}catch(e){setError(failure(e))}finally{setBusy(false)}};
-  return <section className={card}><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-xl">Delivery coverage</h3><p className="mt-1 text-sm text-[var(--hl-muted)]">Maintain supported and explicitly restricted PINs. PINs stay as six-character strings.</p></div><span className="admin-status" data-tone="accent">{data?.total??'—'} shown</span></div>
-    <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(18rem,1fr)_minmax(17rem,1fr)]"><div><label className="text-sm font-bold">Search PINs<input type="search" value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} className={input} placeholder="Start typing a PIN"/></label><label className="mt-3 block text-sm font-bold">View<select value={state} onChange={e=>{setState(e.target.value);setPage(1)}} className={input}><option value="">All entries</option><option value="supported">Supported</option><option value="restricted">Restricted</option><option value="disabled">Disabled</option></select></label><div className="mt-4 max-h-80 overflow-y-auto rounded-xl border border-[var(--hl-border)]">{data?.items.map(pin=><div key={pin.pinCode} className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--hl-border)] p-3 text-sm last:border-0"><span><strong className="font-mono">{pin.pinCode}</strong><span className="ml-2 text-xs text-[var(--hl-muted)]">{!pin.enabled?'Disabled':pin.supported?'Supported':'Restricted'}</span></span><span className="flex gap-2"><button type="button" onClick={()=>edit(pin)} className="text-xs font-bold text-[var(--hl-primary)]">Edit</button><button type="button" disabled={busy} onClick={()=>void remove(pin)} className="text-xs font-bold text-[var(--hl-error)]">Remove</button></span></div>)}{data&&!data.items.length&&<p className="p-6 text-center text-sm text-[var(--hl-muted)]">No PIN entries match. Unlisted PINs are unavailable.</p>}{!data&&!error&&<p className="p-6 text-sm text-[var(--hl-muted)]">Loading PIN entries…</p>}</div>{data&&<div className="mt-3 flex items-center justify-between text-xs"><span>Page {data.page} · {data.total} entries</span><span className="flex gap-3"><button disabled={page<=1} onClick={()=>setPage(page-1)}>Previous</button><button disabled={page*data.pageSize>=data.total} onClick={()=>setPage(page+1)}>Next</button></span></div>}</div>
-      <div className="rounded-xl border border-[var(--hl-border)] bg-[var(--hl-page)] p-4"><h4 className="font-bold">Add or edit PINs</h4><p className="mt-1 text-xs text-[var(--hl-muted)]">Paste up to 100 PINs separated by commas or new lines. Existing entries are updated.</p><label className="mt-3 block text-sm font-bold">Indian PIN codes<textarea id="pin-batch" rows={4} value={text} onChange={e=>setText(e.target.value)} className={input} placeholder="110001, 400001"/></label><div className="mt-2 text-xs"><span className="text-[var(--hl-success)]">{unique.length} valid</span> · <span className="text-[var(--hl-warning)]">{duplicates.length} duplicates</span> · <span className="text-[var(--hl-error)]">{invalid.length} invalid</span></div>{invalid.length>0&&<p className="mt-1 break-all text-xs text-[var(--hl-error)]">Invalid: {invalid.join(', ')}</p>}{duplicates.length>0&&<p className="mt-1 break-all text-xs text-[var(--hl-warning)]">Duplicate: {duplicates.join(', ')}</p>}
-        <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold">Coverage<select value={supported?'supported':'restricted'} onChange={e=>setSupported(e.target.value==='supported')} className={input}><option value="supported">Supported</option><option value="restricted">Restricted</option></select></label><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={enabled} onChange={e=>setEnabled(e.target.checked)} className="size-5 accent-[var(--hl-primary)]"/>Enabled</label></div><label className="mt-3 block text-xs font-bold">Reason (especially for restrictions)<input value={reason} onChange={e=>setReason(e.target.value)} maxLength={250} className={input}/></label><div className="mt-4 grid grid-cols-2 gap-3">{[['Dispatch min (days)',dispatchMin,setDispatchMin],['Dispatch max (days)',dispatchMax,setDispatchMax],['Arrival min (days)',deliveryMin,setDeliveryMin],['Arrival max (days)',deliveryMax,setDeliveryMax]].map(([label,value,setter])=><label key={label as string} className="text-xs font-bold">{label as string}<input type="number" min="0" max="365" value={value as string} onChange={e=>(setter as (value:string)=>void)(e.target.value)} className={input}/></label>)}</div><div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={busy||!unique.length} onClick={()=>void save()} className={primary}>{busy?'Saving…':'Apply PIN entries'}</button><button type="button" onClick={reset} className={secondary}>Cancel draft</button></div></div></div>{error&&<p role="alert" className="mt-4 text-sm text-[var(--hl-error)]">{error} <button onClick={()=>setRetry(n=>n+1)} className="underline">Retry list</button></p>}{notice&&<p role="status" className="mt-4 text-sm text-[var(--hl-success)]">{notice}</p>}</section>;
-}
+function RestrictedPinManager({ version, revision, changed, onDirty }: {
+  version: number;
+  revision: number;
+  changed: (version: number) => void;
+  onDirty: (value: boolean) => void;
+}) {
+  const [data, setData] = useState<Page<PinEntry>>();
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pinCode, setPinCode] = useState('');
+  const [pinTouched, setPinTouched] = useState(false);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [retry, setRetry] = useState(0);
+  const pinError = pinTouched && !pinPattern.test(pinCode) ? 'Enter a valid 6-digit Indian PIN code.' : '';
 
-type Scope = 'store'|'pin'|'category'|'product';
-type RuleForm = { id?:string; name:string; enabled:boolean; scope:Scope; scopeId:string; minWeightGrams:number|null; maxWeightGrams:number|null; minLengthMm:number|null; maxLengthMm:number|null; minWidthMm:number|null; maxWidthMm:number|null; minHeightMm:number|null; maxHeightMm:number|null; base:string; fragile:string; bulky:string; threshold:string; shippingIncluded:boolean; freeShipping:boolean; dispatchMinDays:number|null; dispatchMaxDays:number|null; deliveryMinDays:number|null; deliveryMaxDays:number|null };
-const blankRule=():RuleForm=>({name:'',enabled:false,scope:'store',scopeId:'',minWeightGrams:null,maxWeightGrams:null,minLengthMm:null,maxLengthMm:null,minWidthMm:null,maxWidthMm:null,minHeightMm:null,maxHeightMm:null,base:'',fragile:'',bulky:'',threshold:'',shippingIncluded:false,freeShipping:false,dispatchMinDays:null,dispatchMaxDays:null,deliveryMinDays:null,deliveryMaxDays:null});
-const rupees=(value:number|null)=>value===null?'':(value/100).toFixed(2);
-const formFor=(rule:ShippingRule):RuleForm=>({id:rule.id,name:rule.name,enabled:rule.enabled,scope:rule.productId?'product':rule.categoryId?'category':rule.pinCode?'pin':'store',scopeId:rule.productId??rule.categoryId??rule.pinCode??'',minWeightGrams:rule.minWeightGrams,maxWeightGrams:rule.maxWeightGrams,minLengthMm:rule.minLengthMm,maxLengthMm:rule.maxLengthMm,minWidthMm:rule.minWidthMm,maxWidthMm:rule.maxWidthMm,minHeightMm:rule.minHeightMm,maxHeightMm:rule.maxHeightMm,base:rupees(rule.baseChargePaise),fragile:rupees(rule.fragileChargePaise),bulky:rupees(rule.bulkyChargePaise),threshold:rupees(rule.freeShippingThresholdPaise),shippingIncluded:rule.shippingIncluded??false,freeShipping:rule.freeShipping??false,dispatchMinDays:rule.dispatchMinDays,dispatchMaxDays:rule.dispatchMaxDays,deliveryMinDays:rule.deliveryMinDays,deliveryMaxDays:rule.deliveryMaxDays});
-const summary=(rule:ShippingRule)=>{const scope=rule.product?.name?`Product: ${rule.product.name}`:rule.category?.name?`Category: ${rule.category.name}`:rule.pinCode?`PIN ${rule.pinCode}`:'Store-wide';const parts=[scope,rule.baseChargePaise!==null?`${money(rule.baseChargePaise)} base`:null,rule.shippingIncluded?'shipping included':null,rule.freeShipping?'free base':null,rule.freeShippingThresholdPaise!==null?`free from ${money(rule.freeShippingThresholdPaise)}`:null,rule.fragileChargePaise!==null?`${money(rule.fragileChargePaise)} fragile`:null,rule.bulkyChargePaise!==null?`${money(rule.bulkyChargePaise)} bulky`:null,rule.minWeightGrams!==null||rule.maxWeightGrams!==null?`weight ${rule.minWeightGrams??0}–${rule.maxWeightGrams??'∞'} g`:null];return parts.filter(Boolean).join(' · ')};
-function RulesManager({version,changed,onDirty,revision}:{version:number;changed:(version:number)=>Promise<void>;onDirty:(value:boolean)=>void;revision:number}){
-  const [data,setData]=useState<Page<ShippingRule>>(),[search,setSearch]=useState(''),[page,setPage]=useState(1),[form,setForm]=useState<RuleForm|null>(null),[scopeSearch,setScopeSearch]=useState(''),[options,setOptions]=useState<ProductOption[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[retry,setRetry]=useState(0);
-  const scopeType=form?.scope;
-  useEffect(()=>onDirty(Boolean(form)),[form,onDirty]);
-  useEffect(()=>{let live=true;const q=new URLSearchParams({page:String(page)});if(search)q.set('search',search);settingsService.rules(q).then(v=>{if(live){setData(v);setError('')}}).catch(e=>{if(live)setError(failure(e))});return()=>{live=false}},[search,page,retry,revision]);
-  useEffect(()=>{if(scopeType!=='category'&&scopeType!=='product')return;let live=true;settingsService.options(scopeType,scopeSearch).then(v=>{if(live)setOptions(v)}).catch(()=>{if(live)setOptions([])});return()=>{live=false}},[scopeType,scopeSearch]);
-  const update=<K extends keyof RuleForm>(key:K,value:RuleForm[K])=>setForm(v=>v?{...v,[key]:value}:v);
-  const save=async()=>{if(!form)return;setError('');setNotice('');const amounts=[form.base,form.fragile,form.bulky,form.threshold].map(value=>value===''?null:parseRupees(value));if(amounts.some((value,index)=>value===null&&[form.base,form.fragile,form.bulky,form.threshold][index]!=='')){setError('Charges and thresholds must be non-negative INR amounts with at most two decimal places.');return}if(!form.name.trim()){setError('Give the rule a name.');return}if(form.scope==='pin'&&!pinPattern.test(form.scopeId)){setError('Choose a valid Indian PIN for a location rule.');return}if((form.scope==='product'||form.scope==='category')&&!form.scopeId){setError('Choose an existing product or category.');return}if(form.scope!=='store'&&form.threshold){setError('A cart threshold belongs on a store-wide rule.');return}const ranges:[number|null,number|null][]=[[form.minWeightGrams,form.maxWeightGrams],[form.minLengthMm,form.maxLengthMm],[form.minWidthMm,form.maxWidthMm],[form.minHeightMm,form.maxHeightMm],[form.dispatchMinDays,form.dispatchMaxDays],[form.deliveryMinDays,form.deliveryMaxDays]];if(ranges.some(([min,max])=>min!==null&&max!==null&&min>max)){setError('Minimum values cannot exceed maximum values.');return}
-    const payload={name:form.name.trim(),enabled:form.enabled,pinCode:form.scope==='pin'?form.scopeId:null,productId:form.scope==='product'?form.scopeId:null,categoryId:form.scope==='category'?form.scopeId:null,minWeightGrams:form.minWeightGrams,maxWeightGrams:form.maxWeightGrams,minLengthMm:form.minLengthMm,maxLengthMm:form.maxLengthMm,minWidthMm:form.minWidthMm,maxWidthMm:form.maxWidthMm,minHeightMm:form.minHeightMm,maxHeightMm:form.maxHeightMm,baseChargePaise:amounts[0],fragileChargePaise:amounts[1],bulkyChargePaise:amounts[2],freeShippingThresholdPaise:amounts[3],shippingIncluded:form.shippingIncluded,freeShipping:form.freeShipping,dispatchMinDays:form.dispatchMinDays,dispatchMaxDays:form.dispatchMaxDays,deliveryMinDays:form.deliveryMinDays,deliveryMaxDays:form.deliveryMaxDays};
-    setBusy(true);try{const result=await settingsService.saveRule(payload,version,form.id);await changed(result.version);setForm(null);setNotice('Shipping rule saved. Future quotes use it immediately.');setRetry(n=>n+1)}catch(e){setError(failure(e))}finally{setBusy(false)}};
-  const remove=async(rule:ShippingRule)=>{if(!confirm(`Remove shipping rule “${rule.name}”? Future quotes will stop using it; past order charges remain unchanged.`))return;setBusy(true);setError('');try{await settingsService.removeRule(rule.id,version);await changed(version+1);setNotice(`Rule “${rule.name}” removed.`);setRetry(n=>n+1)}catch(e){setError(failure(e))}finally{setBusy(false)}};
-  return <section className={card}><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-xl">Charge rules</h3><p className="mt-1 text-sm text-[var(--hl-muted)]">Product overrides → category → PIN → store rate. An equally specific overlap is rejected.</p></div><button type="button" onClick={()=>{setForm(blankRule());setScopeSearch('')}} className={primary}>Add rule</button></div><label className="mt-5 block max-w-md text-sm font-bold">Search rules<input type="search" value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} className={input} placeholder="Rule name"/></label>
-    <div className="mt-4 overflow-x-auto rounded-xl border border-[var(--hl-border)]"><table className="w-full min-w-[38rem] text-left text-sm"><thead className="bg-[var(--hl-page)] text-xs uppercase tracking-wide text-[var(--hl-muted)]"><tr><th className="p-3">Rule</th><th className="p-3">Effect and scope</th><th className="p-3">State</th><th className="p-3 text-right">Actions</th></tr></thead><tbody>{data?.items.map(rule=><tr key={rule.id} className="border-t border-[var(--hl-border)]"><td className="max-w-48 break-words p-3 font-bold">{rule.name}</td><td className="p-3 text-xs leading-5 text-[var(--hl-muted)]">{summary(rule)}</td><td className="p-3"><span className="admin-status" data-tone={rule.enabled?'success':'neutral'}>{rule.enabled?'Active':'Disabled'}</span></td><td className="whitespace-nowrap p-3 text-right"><button type="button" onClick={()=>{setForm(formFor(rule));setScopeSearch(rule.product?.name??rule.category?.name??'')}} className="font-bold text-[var(--hl-primary)]">Edit</button><button type="button" disabled={busy} onClick={()=>void remove(rule)} className="ml-3 font-bold text-[var(--hl-error)]">Remove</button></td></tr>)}{data&&!data.items.length&&<tr><td colSpan={4} className="p-8 text-center text-[var(--hl-muted)]">No rules configured. Add a store-wide base rate before quoting delivery.</td></tr>}{!data&&!error&&<tr><td colSpan={4} className="p-8 text-center text-[var(--hl-muted)]">Loading rules…</td></tr>}</tbody></table></div>{data&&<div className="mt-3 flex justify-between text-xs"><span>Page {data.page} · {data.total} rules</span><span className="flex gap-3"><button disabled={page<=1} onClick={()=>setPage(page-1)}>Previous</button><button disabled={page*data.pageSize>=data.total} onClick={()=>setPage(page+1)}>Next</button></span></div>}
-    {form&&<div className="mt-6 rounded-xl border border-[var(--hl-border)] bg-[var(--hl-page)] p-4 sm:p-5"><div className="flex justify-between gap-3"><h4 className="text-lg font-bold">{form.id?'Edit rule':'New rule'}</h4><button type="button" onClick={()=>setForm(null)} aria-label="Close rule editor" className="text-sm font-bold text-[var(--hl-muted)]">Close</button></div><div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-xs font-bold sm:col-span-2">Readable name<input required maxLength={120} value={form.name} onChange={e=>update('name',e.target.value)} className={input} placeholder="Standard delivery"/></label><label className="text-xs font-bold">Scope<select value={form.scope} onChange={e=>setForm(v=>v?{...v,scope:e.target.value as Scope,scopeId:''}:v)} className={input}><option value="store">Store-wide</option><option value="pin">PIN code</option><option value="category">Category</option><option value="product">Product</option></select></label><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={form.enabled} onChange={e=>update('enabled',e.target.checked)} className="size-5 accent-[var(--hl-primary)]"/>Active</label>{form.scope==='pin'&&<label className="text-xs font-bold sm:col-span-2">PIN code<input inputMode="numeric" maxLength={6} value={form.scopeId} onChange={e=>update('scopeId',e.target.value)} className={input}/></label>}{(form.scope==='category'||form.scope==='product')&&<div className="sm:col-span-2"><label className="text-xs font-bold">Search {form.scope}<input value={scopeSearch} onChange={e=>setScopeSearch(e.target.value)} className={input}/></label><label className="mt-2 block text-xs font-bold">Select {form.scope}<select value={form.scopeId} onChange={e=>update('scopeId',e.target.value)} className={input}><option value="">Choose one</option>{form.scopeId&&!options.some(v=>v.id===form.scopeId)&&<option value={form.scopeId}>Current selection</option>}{options.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label></div>}
-      <label className="text-xs font-bold">Base charge (INR)<input inputMode="decimal" value={form.base} onChange={e=>update('base',e.target.value)} className={input} placeholder="Use lower-priority rate"/></label><label className="text-xs font-bold">Free delivery at merchandise (INR){form.scope!=='store'&&<span className="block font-normal">Store-wide rules only</span>}<input inputMode="decimal" disabled={form.scope!=='store'} value={form.threshold} onChange={e=>update('threshold',e.target.value)} className={input} placeholder="No threshold"/></label><label className="text-xs font-bold">Fragile handling per unit (INR)<input inputMode="decimal" value={form.fragile} onChange={e=>update('fragile',e.target.value)} className={input}/></label><label className="text-xs font-bold">Bulky handling per unit (INR)<input inputMode="decimal" value={form.bulky} onChange={e=>update('bulky',e.target.value)} className={input}/></label><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={form.shippingIncluded} onChange={e=>update('shippingIncluded',e.target.checked)} className="size-5 accent-[var(--hl-primary)]"/>Shipping included in price</label><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={form.freeShipping} onChange={e=>update('freeShipping',e.target.checked)} className="size-5 accent-[var(--hl-primary)]"/>Free base delivery for matching items</label></div>
-      <h5 className="mt-6 text-sm font-bold">Optional parcel conditions</h5><p className="mt-1 text-xs text-[var(--hl-muted)]">Weight uses grams; packed dimensions use millimetres. If measurements are missing, this rule will not match and a lower-priority rate must price the item.</p><div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{([['Min weight (g)','minWeightGrams'],['Max weight (g)','maxWeightGrams'],['Min length (mm)','minLengthMm'],['Max length (mm)','maxLengthMm'],['Min width (mm)','minWidthMm'],['Max width (mm)','maxWidthMm'],['Min height (mm)','minHeightMm'],['Max height (mm)','maxHeightMm']] as const).map(([label,key])=><label key={key} className="text-xs font-bold">{label}<input type="number" min="0" value={form[key]??''} onChange={e=>update(key,numberOrNull(e.target.value))} className={input}/></label>)}</div><h5 className="mt-6 text-sm font-bold">Estimated timing</h5><p className="mt-1 text-xs text-[var(--hl-muted)]">Dispatch and arrival are separate day ranges.</p><div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{([['Dispatch min (days)','dispatchMinDays'],['Dispatch max (days)','dispatchMaxDays'],['Arrival min (days)','deliveryMinDays'],['Arrival max (days)','deliveryMaxDays']] as const).map(([label,key])=><label key={key} className="text-xs font-bold">{label}<input type="number" min="0" max="365" value={form[key]??''} onChange={e=>update(key,numberOrNull(e.target.value))} className={input}/></label>)}</div><div className="mt-5 flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={()=>void save()} className={primary}>{busy?'Saving…':'Save rule'}</button><button type="button" onClick={()=>setForm(null)} className={secondary}>Cancel</button></div></div>}
-    {error&&<p role="alert" className="mt-4 text-sm text-[var(--hl-error)]">{error} <button onClick={()=>setRetry(n=>n+1)} className="underline">Retry list</button></p>}{notice&&<p role="status" className="mt-4 text-sm text-[var(--hl-success)]">{notice}</p>}</section>;
-}
+  useEffect(() => onDirty(Boolean(pinCode || reason)), [pinCode, reason, onDirty]);
+  useEffect(() => {
+    let live = true;
+    const query = new URLSearchParams({ page: String(page) });
+    if (search) query.set('search', search);
+    settingsService.pins(query)
+      .then(value => { if (live) { setData(value); setError(''); } })
+      .catch(cause => { if (live) setError(failure(cause)); });
+    return () => { live = false; };
+  }, [search, page, retry, revision]);
 
-function QuoteTester({hasDraft}:{hasDraft:boolean}){
-  const [pin,setPin]=useState(''),[search,setSearch]=useState(''),[options,setOptions]=useState<ProductOption[]>([]),[productId,setProductId]=useState(''),[variantId,setVariantId]=useState(''),[quantity,setQuantity]=useState(1),[items,setItems]=useState<{productId:string;variantId:string;quantity:number;label:string;pricePaise:number}[]>([]),[code,setCode]=useState(''),[result,setResult]=useState<ShippingQuote>(),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  useEffect(()=>{let live=true;settingsService.options('product',search).then(v=>{if(live)setOptions(v.filter(product=>product.status==='PUBLISHED'))}).catch(()=>{if(live)setOptions([])});return()=>{live=false}},[search]);
-  const product=options.find(v=>v.id===productId),variant=product?.variants?.find(v=>v.id===variantId);
-  const add=()=>{if(!product||!variant||!Number.isInteger(quantity)||quantity<1||quantity>100)return;setItems(current=>{const existing=current.find(item=>item.variantId===variant.id);return existing?current.map(item=>item.variantId===variant.id?{...item,quantity:item.quantity+quantity}:item):[...current,{productId:product.id,variantId:variant.id,quantity,label:`${product.name} · ${variant.sku}`,pricePaise:variant.pricePaise}]});setVariantId('')};
-  const calculate=async()=>{if(!pinPattern.test(pin)){setError('Enter a valid six-digit Indian PIN code.');return}if(!items.length){setError('Add at least one real variant.');return}setBusy(true);setError('');setResult(undefined);try{setResult(await settingsService.quote({pinCode:pin,items:items.map(({productId,variantId,quantity})=>({productId,variantId,quantity})),...(code.trim()?{code:code.trim()}: {})}))}catch(e){setError(failure(e))}finally{setBusy(false)}};
-  return <section className={card}><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-xl">Test delivery and charges</h3><p className="mt-1 text-sm text-[var(--hl-muted)]">Read-only calculation with current catalogue prices and saved promotions. It never creates an order or reserves stock.</p></div><span className="admin-status" data-tone="accent">Saved rules</span></div>{hasDraft&&<p className="mt-4 rounded-xl bg-[#fff2dc] p-3 text-sm text-[#89540d]">You have unsaved edits. Save them before testing; this quote uses saved rules only.</p>}
-    <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(16rem,1fr)]"><div className="grid content-start gap-4"><label className="text-sm font-bold">Destination PIN code<input inputMode="numeric" maxLength={6} value={pin} onChange={e=>setPin(e.target.value)} className={input} placeholder="Six-digit Indian PIN"/></label><label className="text-sm font-bold">Search real products<input type="search" value={search} onChange={e=>{setSearch(e.target.value);setProductId('');setVariantId('')}} className={input} placeholder="Product name"/></label><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-bold">Product<select value={productId} onChange={e=>{setProductId(e.target.value);setVariantId('')}} className={input}><option value="">Select product</option>{options.filter(v=>v.variants?.length).map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label><label className="text-sm font-bold">Variant<select value={variantId} onChange={e=>setVariantId(e.target.value)} className={input}><option value="">Select SKU</option>{product?.variants?.map(v=><option key={v.id} value={v.id}>{v.sku} · {money(v.pricePaise)}</option>)}</select></label></div><div className="flex flex-wrap items-end gap-3"><label className="w-24 text-sm font-bold">Quantity<input type="number" min="1" max="100" value={quantity} onChange={e=>setQuantity(Number(e.target.value))} className={input}/></label><button type="button" disabled={!variant} onClick={add} className={secondary}>Add variant</button></div><div className="rounded-xl border border-[var(--hl-border)]">{items.length?items.map(item=><div key={item.variantId} className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--hl-border)] p-3 text-sm last:border-0"><span className="min-w-0"><strong className="block break-words">{item.label}</strong><span className="text-xs text-[var(--hl-muted)]">{item.quantity} × {money(item.pricePaise)}</span></span><button type="button" onClick={()=>setItems(current=>current.filter(row=>row.variantId!==item.variantId))} className="text-xs font-bold text-[var(--hl-error)]">Remove</button></div>):<p className="p-4 text-sm text-[var(--hl-muted)]">No variants selected.</p>}</div><label className="text-sm font-bold">Coupon code (optional)<input value={code} onChange={e=>setCode(e.target.value)} className={input} placeholder="Uses saved promotion rules"/></label><button type="button" disabled={busy||!items.length} onClick={()=>void calculate()} className={primary}>{busy?'Calculating…':'Calculate saved-rule quote'}</button>{error&&<p role="alert" className="text-sm text-[var(--hl-error)]">{error}</p>}</div>
-      <div className="h-fit rounded-xl border border-[var(--hl-border)] bg-[var(--hl-page)] p-5" aria-live="polite"><h4 className="font-bold">Quote result</h4>{!result?<p className="mt-4 text-sm text-[var(--hl-muted)]">Enter a PIN and add variants to see serviceability and charges.</p>:<><p className={`mt-4 text-sm font-bold ${result.available&&result.priced?'text-[var(--hl-success)]':'text-[var(--hl-error)]'}`}>{result.available?(result.priced?'Delivery available':'Delivery supported, rate incomplete'):'Delivery unavailable'}</p><p className="mt-2 text-sm leading-6">{result.reason}</p><p className="mt-2 text-xs text-[var(--hl-muted)]">Coverage: {result.coverageRule}</p>{result.priced&&<><strong className="admin-metric mt-5 block text-3xl">{money(result.finalChargePaise??0)}</strong><p className="text-xs text-[var(--hl-muted)]">Final delivery charge · INR</p><dl className="mt-5 grid gap-2 border-t border-[var(--hl-border)] pt-4 text-sm">{([['Merchandise before discounts',result.merchandise?.originalMerchandisePaise],['Promotion savings',(result.merchandise?.automaticPaise??0)+(result.merchandise?.couponPaise??0)],['Qualifying subtotal',result.qualifyingSubtotalPaise],['Base delivery',result.baseChargePaise],['Fragile / bulky handling',result.handlingChargePaise],['Base waived',result.waivedBasePaise],['Handling waived',result.waivedHandlingPaise]] as const).map(([label,value])=><div key={label} className="flex justify-between gap-3"><dt>{label}</dt><dd className="font-semibold tabular-nums">{money(value??0)}</dd></div>)}</dl>{result.thresholdPaise!==null&&<p className="mt-3 text-xs text-[var(--hl-muted)]">Free-delivery threshold {money(result.thresholdPaise??0)} uses {result.thresholdBasis==='BEFORE_DISCOUNTS'?'pre-discount':'post-discount'} merchandise.</p>}{result.estimate&&<p className="mt-4 text-xs text-[var(--hl-muted)]">Dispatch: {result.estimate.dispatchMinDays??'—'}–{result.estimate.dispatchMaxDays??'—'} days · Arrival: {result.estimate.deliveryMinDays??'—'}–{result.estimate.deliveryMaxDays??'—'} days</p>}{result.lineBreakdown?.length?<details className="mt-4 text-xs"><summary className="cursor-pointer font-bold text-[var(--hl-primary)]">Matching item rules</summary><ul className="mt-2 list-disc space-y-2 pl-4">{result.lineBreakdown.map((line,index)=><li key={`${line.name}-${index}`}>{line.name} × {line.quantity}: {line.ruleNames.join(' → ')||'No named rule'}</li>)}</ul></details>:null}</>}</>}</div></div></section>;
+  const restrict = async () => {
+    setPinTouched(true);
+    if (!pinPattern.test(pinCode)) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const result = await settingsService.blockPin({ version, pinCode, reason: reason.trim() || null });
+      changed(result.version);
+      setPinCode(''); setPinTouched(false); setReason('');
+      setNotice('PIN ' + result.pinCode + ' restricted.');
+      setRetry(current => current + 1);
+    } catch (cause) { setError(failure(cause)); }
+    finally { setBusy(false); }
+  };
+
+  const unrestrict = async (pin: PinEntry) => {
+    if (!confirm('Unrestrict PIN ' + pin.pinCode + '? Delivery will be available again.')) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await settingsService.unblockPin(pin.pinCode, version);
+      changed(version + 1);
+      setNotice('PIN ' + pin.pinCode + ' unrestricted.');
+      setRetry(current => current + 1);
+    } catch (cause) { setError(failure(cause)); }
+    finally { setBusy(false); }
+  };
+
+  return <section className={card}>
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h3 className="text-xl">Restricted PIN Codes</h3>
+        <p className="mt-1 text-sm text-[var(--hl-muted)]">All valid 6-digit Indian PIN codes are deliverable by default. Add only PIN codes where delivery is restricted or unavailable.</p>
+      </div>
+      <span className="admin-status" data-tone="accent">{data?.total ?? '—'} restricted</span>
+    </div>
+    <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(16rem,1fr)_minmax(17rem,1fr)]">
+      <div>
+        <label className="text-sm font-bold">Search restricted PINs
+          <input type="search" inputMode="numeric" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} className={input} placeholder="Start typing a PIN" />
+        </label>
+        <div className="mt-4 max-h-80 overflow-y-auto rounded-xl border border-[var(--hl-border)]">
+          {data?.items.map(pin => <div key={pin.pinCode} className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--hl-border)] p-3 text-sm last:border-0">
+            <span className="min-w-0"><strong className="font-mono">{pin.pinCode}</strong>{pin.reason && <span className="mt-1 block break-words text-xs text-[var(--hl-muted)]">{pin.reason}</span>}</span>
+            <button type="button" disabled={busy} onClick={() => void unrestrict(pin)} className="min-h-10 text-xs font-bold text-[var(--hl-error)]">Remove / Unrestrict</button>
+          </div>)}
+          {data && !data.items.length && <p className="p-6 text-center text-sm text-[var(--hl-muted)]">No restricted PIN codes match. Valid unlisted PINs are deliverable.</p>}
+          {!data && !error && <p className="p-6 text-sm text-[var(--hl-muted)]">Loading restricted PIN codes…</p>}
+        </div>
+        {data && <div className="mt-3 flex items-center justify-between text-xs">
+          <span>Page {data.page} · {data.total} restricted</span>
+          <span className="flex gap-3">
+            <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button>
+            <button type="button" disabled={page * data.pageSize >= data.total} onClick={() => setPage(page + 1)}>Next</button>
+          </span>
+        </div>}
+      </div>
+      <div className="rounded-xl border border-[var(--hl-border)] bg-[var(--hl-page)] p-4">
+        <h4 className="font-bold">Add Restricted PIN Code</h4>
+        <label className="mt-3 block text-sm font-bold">Indian PIN code (required)
+          <input inputMode="numeric" autoComplete="postal-code" maxLength={6} value={pinCode}
+            onChange={event => { setPinCode(event.target.value.replace(/\D/g, '').slice(0, 6)); setPinTouched(true); }}
+            onBlur={() => setPinTouched(true)} aria-invalid={Boolean(pinError)} aria-describedby={pinError ? 'restricted-pin-error' : undefined}
+            className={input} placeholder="560001" />
+        </label>
+        {pinError && <p id="restricted-pin-error" className="mt-1 text-xs text-[var(--hl-error)]">{pinError}</p>}
+        <label className="mt-3 block text-sm font-bold">Reason (optional)
+          <input maxLength={250} value={reason} onChange={event => setReason(event.target.value)} className={input} placeholder="Remote area / courier unavailable" />
+        </label>
+        <button type="button" disabled={busy || !pinPattern.test(pinCode)} onClick={() => void restrict()} className={primary + ' mt-4'}>{busy ? 'Saving…' : 'Add Restricted PIN Code'}</button>
+      </div>
+    </div>
+    {error && <p role="alert" className="mt-4 text-sm text-[var(--hl-error)]">{error} <button type="button" onClick={() => setRetry(current => current + 1)} className="underline">Retry list</button></p>}
+    {notice && <p role="status" className="mt-4 text-sm text-[var(--hl-success)]">{notice}</p>}
+  </section>;
 }

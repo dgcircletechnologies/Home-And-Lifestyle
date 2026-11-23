@@ -1,8 +1,8 @@
 'use client';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../auth/provider';
 import { addressesApi, addressLines, type Address, type AddressInput } from '../addresses/addresses-api';
 import { AddressForm } from '../addresses/address-form';
@@ -10,6 +10,8 @@ import { useCart, type CartSummary } from '../cart/cart-provider';
 import { rupees } from '../store/catalog';
 import { StorePhoto } from '../store/storefront-ui';
 import { StoreCTA } from '../store/store-cta';
+import { ordersApi } from '../orders/orders-api';
+import { openPayment } from '../orders/razorpay-checkout';
 
 type Mode = 'cart' | 'direct';
 function AddressPicker({ title, addresses, selected, onSelect, onAdd, name }: { title: string; addresses: Address[]; selected: string; onSelect: (id: string) => void; onAdd: () => void; name: string }) {
@@ -17,6 +19,7 @@ function AddressPicker({ title, addresses, selected, onSelect, onAdd, name }: { 
 }
 
 export function CheckoutPage() {
+  const router = useRouter();
   const params = useSearchParams();
   const auth = useAuth();
   const cart = useCart();
@@ -36,6 +39,9 @@ export function CheckoutPage() {
   const [billingAddressId, setBillingAddressId] = useState('');
   const [sameBilling, setSameBilling] = useState(true);
   const [addingFor, setAddingFor] = useState<'shipping' | 'billing' | null>(null);
+  const [paymentBusy, setPaymentBusy] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  const [launchedOrderId, setLaunchedOrderId] = useState('');
   const customer = auth.status === 'authenticated' && auth.user?.role === 'CUSTOMER';
 
   const refreshAddresses = useCallback(async () => {
@@ -86,6 +92,16 @@ export function CheckoutPage() {
   };
   const selectedBillingAddressId = sameBilling ? shippingAddressId : billingAddressId;
   const checkoutDraft = { mode, items: summary?.items.map(row => ({ variantId: row.variantId, quantity: row.quantity })) ?? [], couponCode: mode === 'cart' && summary?.coupon?.valid ? summary.coupon.code : null, shippingAddressId, billingAddressId: selectedBillingAddressId };
+  const proceed = async () => {
+    if (paymentBusy || !summary?.canCheckout || !checkoutDraft.shippingAddressId || !checkoutDraft.billingAddressId) return;
+    setPaymentBusy(true); setPaymentError('');
+    try {
+      const launch = await ordersApi.checkout(mode === 'direct' ? { mode: 'DIRECT', shippingAddressId, billingAddressId: selectedBillingAddressId, variantId: requestedVariantId, quantity: Number(requestedQuantity) } : { mode: 'CART', shippingAddressId, billingAddressId: selectedBillingAddressId, ...(checkoutDraft.couponCode ? { couponCode: checkoutDraft.couponCode } : {}) });
+      setLaunchedOrderId(launch.orderId);
+      await openPayment(launch, id => router.push(`/checkout/result?orderId=${encodeURIComponent(id)}`), mode === 'cart' ? cart.refresh : undefined);
+    } catch (error) { setPaymentError(error instanceof ApiError && ['RAZORPAY_NOT_CONFIGURED', 'RAZORPAY_CONFIG_INVALID'].includes(error.code) ? 'Online payment is temporarily unavailable. Please try again later.' : error instanceof Error ? error.message : 'Payment could not be started.'); }
+    finally { setPaymentBusy(false); }
+  };
 
   if (auth.status === 'initializing') return <div className="store-checkout-page" role="status">Preparing checkout…</div>;
   if (auth.status === 'error') return <div className="store-checkout-page" role="alert"><h1>We couldn’t restore your session.</h1><p>{auth.error}</p><StoreCTA onClick={auth.retryInitialization}>Try again</StoreCTA></div>;
@@ -100,5 +116,5 @@ export function CheckoutPage() {
       {addingFor === 'shipping' && <AddressForm title="New shipping address" onSave={saveAddress} onCancel={() => setAddingFor(null)}/>}
       <section className="store-checkout-billing"><h2>Billing address</h2><label><input type="checkbox" checked={sameBilling} onChange={event => setSameBilling(event.target.checked)}/> Billing address same as shipping address</label></section>
       {!sameBilling && <><AddressPicker title="Choose billing address" addresses={addresses} selected={billingAddressId} onSelect={setBillingAddressId} onAdd={() => setAddingFor('billing')} name="billing-address"/>{addingFor === 'billing' && <AddressForm title="New billing address" onSave={saveAddress} onCancel={() => setAddingFor(null)}/>}</>}
-    </div><aside className="store-checkout-summary" aria-label="Order summary"><div className="store-checkout-summary-head"><p className="store-kicker">Your pieces</p><h2>Order summary</h2>{mode === 'cart' && <Link href="/cart">Edit items or coupons →</Link>}</div><div className="store-checkout-lines">{summary.items.map(item => <div key={item.variantId} className="store-checkout-line"><div className="store-checkout-line-photo"><StorePhoto url={item.product?.image?.url} alt={item.product?.image?.altText || item.product?.name || 'Selected piece'}/></div><div><strong>{item.product?.name}</strong><small>SKU {item.variant?.sku} · Qty {item.quantity}</small>{Array.isArray(item.variant?.attributes) && item.variant.attributes.length > 0 && <small>{item.variant.attributes.filter(row => row.title && row.value).map(row => `${row.title}: ${row.value}`).join(' · ')}</small>}<span>{rupees(item.effectiveUnitPricePaise)}{item.effectiveUnitPricePaise < item.unitPricePaise && <del>{rupees(item.unitPricePaise)}</del>} × {item.quantity}</span></div><b>{rupees(item.effectiveUnitPricePaise * item.quantity)}</b></div>)}</div><div className="store-checkout-breakdown"><div><span>Subtotal</span><strong>{rupees(summary.subtotalPaise)}</strong></div>{summary.automaticDiscountPaise > 0 && <div className="store-cart-saving"><span>Product savings</span><strong>−{rupees(summary.automaticDiscountPaise)}</strong></div>}{mode === 'cart' && summary.coupon?.valid && summary.couponDiscountPaise > 0 && <div className="store-cart-saving"><span>Coupon · {summary.coupon.code}</span><strong>−{rupees(summary.couponDiscountPaise)}</strong></div>}<div><span>Shipping</span><span>Shipping included in cost</span></div><div className="store-checkout-total"><span>Total</span><strong>{rupees(summary.estimatedTotalPaise)}</strong></div></div><StoreCTA disabled className="store-checkout-payment">Proceed to Payment</StoreCTA><p className="store-checkout-helper">{!checkoutDraft.shippingAddressId || !checkoutDraft.billingAddressId ? 'Choose shipping and billing addresses. Payment step coming next.' : 'Payment step coming next.'}</p><p className="store-checkout-estimate">Prices and stock will be checked again before an order is placed.</p></aside></div></div>;
+    </div><aside className="store-checkout-summary" aria-label="Order summary"><div className="store-checkout-summary-head"><p className="store-kicker">Your pieces</p><h2>Order summary</h2>{mode === 'cart' && <Link href="/cart">Edit items or coupons →</Link>}</div><div className="store-checkout-lines">{summary.items.map(item => <div key={item.variantId} className="store-checkout-line"><div className="store-checkout-line-photo"><StorePhoto url={item.product?.image?.url} alt={item.product?.image?.altText || item.product?.name || 'Selected piece'}/></div><div><strong>{item.product?.name}</strong><small>SKU {item.variant?.sku} · Qty {item.quantity}</small>{Array.isArray(item.variant?.attributes) && item.variant.attributes.length > 0 && <small>{item.variant.attributes.filter(row => row.title && row.value).map(row => `${row.title}: ${row.value}`).join(' · ')}</small>}<span>{rupees(item.effectiveUnitPricePaise)}{item.effectiveUnitPricePaise < item.unitPricePaise && <del>{rupees(item.unitPricePaise)}</del>} × {item.quantity}</span></div><b>{rupees(item.effectiveUnitPricePaise * item.quantity)}</b></div>)}</div><div className="store-checkout-breakdown"><div><span>Subtotal</span><strong>{rupees(summary.subtotalPaise)}</strong></div>{summary.automaticDiscountPaise > 0 && <div className="store-cart-saving"><span>Product savings</span><strong>−{rupees(summary.automaticDiscountPaise)}</strong></div>}{mode === 'cart' && summary.coupon?.valid && summary.couponDiscountPaise > 0 && <div className="store-cart-saving"><span>Coupon · {summary.coupon.code}</span><strong>−{rupees(summary.couponDiscountPaise)}</strong></div>}<div><span>Shipping</span><span>Shipping included in cost</span></div><div className="store-checkout-total"><span>Total</span><strong>{rupees(summary.estimatedTotalPaise)}</strong></div></div><StoreCTA disabled={paymentBusy || !checkoutDraft.shippingAddressId || !checkoutDraft.billingAddressId || !summary.canCheckout} onClick={() => void proceed()} className="store-checkout-payment">{paymentBusy ? 'Opening payment…' : 'Proceed to Payment'}</StoreCTA><p className="store-checkout-helper">{!checkoutDraft.shippingAddressId || !checkoutDraft.billingAddressId ? 'Choose shipping and billing addresses to continue.' : 'Secure online payment via Razorpay.'}</p>{paymentError && <p className="store-form-error" role="alert">{paymentError}{launchedOrderId && <> <Link href={`/account/orders/${launchedOrderId}`}>View this order</Link></>}</p>}<p className="store-checkout-estimate">Prices and stock are checked again when payment begins.</p></aside></div></div>;
 }

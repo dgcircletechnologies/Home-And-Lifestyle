@@ -1,3 +1,5 @@
+// Only enabled rows with supported=false block delivery. Missing, disabled and
+// supported legacy rows are deliverable; keep those rows for historical estimates.
 model PinCodeServiceability {
   pinCode         String   @id
   supported       Boolean

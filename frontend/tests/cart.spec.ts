@@ -33,6 +33,16 @@ test('guest cart survives reload, respects stock, applies coupon, and fits mobil
   await expect(page.getByText('SKU VASE-L')).toBeVisible();
   await expect(page.getByText('Size: Large · Color: Terracotta')).toBeVisible();
   await expect(page.getByText('₹1,000', { exact: true }).first()).toBeVisible();
+  const inspectCartLayout = async () => page.evaluate(() => {
+    const photo = document.querySelector('.store-cart-photo')!.getBoundingClientRect();
+    const price = getComputedStyle(document.querySelector('.store-cart-line-total')!);
+    const input = document.querySelector('.store-cart-coupon input')!.getBoundingClientRect();
+    const apply = document.querySelector('.store-cart-coupon form button')!.getBoundingClientRect();
+    const pageBox = document.querySelector('.store-cart-page')!.getBoundingClientRect();
+    const summary = document.querySelector('.store-cart-summary')!.getBoundingClientRect();
+    return { square: Math.abs(photo.width - photo.height) < 1, numericFont: price.fontFamily, numericVariant: price.fontVariantNumeric, couponAligned: Math.abs(input.height - apply.height) < 1 && Math.abs(input.top - apply.top) < 1, summaryInsidePage: summary.left >= pageBox.left - 1 && summary.right <= pageBox.right + 1 };
+  });
+  expect(await inspectCartLayout()).toMatchObject({ square: true, numericFont: expect.stringMatching(/Arial/i), numericVariant: expect.stringContaining('tabular-nums'), couponAligned: true, summaryInsidePage: true });
   await page.getByRole('button', { name: 'Increase quantity' }).click();
   await expect(page.getByRole('link', { name: 'Cart, 2 items' })).toBeVisible();
   await page.reload();
@@ -49,6 +59,7 @@ test('guest cart survives reload, respects stock, applies coupon, and fits mobil
   await expect(page.getByText('Coupon code not found.')).toBeVisible();
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  expect(await inspectCartLayout()).toMatchObject({ square: true, numericFont: expect.stringMatching(/Arial/i), numericVariant: expect.stringContaining('tabular-nums'), couponAligned: true, summaryInsidePage: true });
   await page.getByRole('button', { name: 'Remove' }).first().click();
   await expect(page.getByRole('link', { name: 'Explore Shop All' })).toBeVisible();
   expect(hydrationErrors).toEqual([]);

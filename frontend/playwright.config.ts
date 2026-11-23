@@ -1,2 +1,2 @@
 import { defineConfig } from '@playwright/test';
-export default defineConfig({ testDir: './tests', workers: 1, use: { baseURL: 'http://localhost:3100' }, webServer: { command: 'npm run dev -- --port 3100', url: 'http://localhost:3100', reuseExistingServer: false, env: { NEXT_PUBLIC_API_URL: 'http://localhost:3101/api' } } });
+export default defineConfig({ testDir: './tests', workers: 1, use: { baseURL: 'http://localhost:3100' }, webServer: { command: 'npm run dev -- --port 3100', url: 'http://localhost:3100', reuseExistingServer: false, env: { NEXT_PUBLIC_API_URL: 'http://localhost:3101/api', NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL: 'http://localhost:3100/test-checkout.js', NEXT_PUBLIC_RAZORPAY_KEY_ID: 'test-public-key' } } });

@@ -8,6 +8,9 @@ model Order {
   currency              String             @default("INR")
   // Required immutable purchase-time address object, independent of CustomerAddress.
   deliveryAddress       Json
+  billingAddress        Json?
+  sourceMode            String             @default("CART")
+  couponCodeSnapshot    String?
   status                String
   subtotalPaise         Int
   discountPaise         Int
