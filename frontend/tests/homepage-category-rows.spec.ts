@@ -24,7 +24,6 @@ const home = {
 
 test('homepage keeps editorial sections and shows shared category cards in desktop and mobile layouts', async ({ page }) => {
   await page.route('**/api/storefront/home', route => route.fulfill({ json: home }));
-  await page.route('**/api/storefront/serviceability/110001', route => route.fulfill({ json: { pinCode: '110001', available: true, message: 'Delivery is available for this PIN.' } }));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'A little more you in every room.' })).toBeVisible();
@@ -38,7 +37,7 @@ test('homepage keeps editorial sections and shows shared category cards in deskt
   expect(order).toEqual(['edit', 'row', 'row', 'row', 'gifting']);
   await expect(page.locator('.store-home-category-row .store-product-grid').first()).toHaveCSS('display', 'grid');
   const ctas = page.locator('.store-home-cta');
-  await expect(ctas).toHaveCount(9);
+  await expect(ctas).toHaveCount(8);
   const styles = await ctas.evaluateAll(elements => elements.map(element => ({ background: getComputedStyle(element).backgroundColor, image: getComputedStyle(element).backgroundImage, text: getComputedStyle(element).color, border: getComputedStyle(element).borderBottomWidth, radius: getComputedStyle(element).borderRadius })));
   expect(new Set(styles.map(style => style.background)).size).toBe(1);
   expect(styles.every(style => style.background === 'rgb(77, 41, 70)' && style.image === 'none' && style.text === 'rgb(255, 253, 248)' && style.border === '0px' && style.radius === '999px')).toBe(true);
@@ -71,9 +70,8 @@ test('homepage keeps editorial sections and shows shared category cards in deskt
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
-  await page.getByLabel('Indian PIN code').fill('110001');
-  await page.getByRole('button', { name: 'Check', exact: true }).click();
-  await expect(page.getByText('Delivery is available for this PIN.')).toBeVisible();
+  await expect(page.getByLabel('Indian PIN code')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Check', exact: true })).toHaveCount(0);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   expect(await page.locator('.store-home-category-row .store-product-photo img').first().evaluate(image => parseFloat(getComputedStyle(image).transitionDuration))).toBeLessThan(0.001);
   expect(await categoryCta.evaluate(button => parseFloat(getComputedStyle(button).transitionDuration))).toBeLessThan(0.001);

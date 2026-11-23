@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { ShopService } = require('../dist/src/storefront/shop.service.js');
 const category = { id: 'cat', name: 'Vases', slug: 'vases', parentId: null, status: 'ACTIVE', deletedAt: null };
-const makeVariant = (id, price, stock, colour, size) => ({ id, pricePaise: price, stockQuantity: stock, images: [], selections: [
+const makeVariant = (id, price, stock, colour, size) => ({ id, sku: id.toUpperCase(), pricePaise: price, stockQuantity: stock, attributes: [{ title: 'Colour', value: colour }, { title: 'Size', value: size }], optionCombinationKey: id, images: [], selections: [
   { value: { label: colour, option: { key: 'colour' } } }, { value: { label: size, option: { key: 'size' } } },
 ] });
 const makeProduct = (n, variants = [makeVariant(`v${n}`, 10000 + n * 100, 1, 'Blue', 'Small')]) => ({
@@ -34,6 +34,15 @@ test('active automatic offer controls card price and sale comparison', async () 
   const mocked = db([product]); mocked.promotion.findMany = async () => [{id:'offer',productId:product.id,categoryId:null,kind:'FIXED',amountPaise:20000,percentBasisPoints:null}];
   const result = await new ShopService(mocked).list(query({min:1000,max:1000,sale:'true'}));
   assert.equal(result.total,1); assert.equal(result.onSale,true); assert.equal(result.items[0].minPricePaise,100000); assert.equal(result.items[0].compareAtPricePaise,120000);
+});
+test('multi-variant cards expose the cheapest discounted SKU and retain the full variant count', async () => {
+  const product = makeProduct(1, [makeVariant('small', 100000, 2, 'Blue', 'Small'), makeVariant('large', 140000, 1, 'Red', 'Large')]);
+  const mocked = db([product]); mocked.promotion.findMany = async () => [{ id: 'offer', productId: product.id, categoryId: null, kind: 'FIXED', amountPaise: 10000, percentBasisPoints: null }];
+  const card = (await new ShopService(mocked).list(query())).items[0];
+  assert.equal(card.variantCount, 2);
+  assert.equal(card.minPricePaise, 90000);
+  assert.equal(card.compareAtPricePaise, 100000);
+  assert.deepEqual(card.variants.map(item => [item.sku, item.effectivePricePaise]), [['SMALL', 90000], ['LARGE', 130000]]);
 });
 test('all five orders sort the full 26-product set before pagination with stable ties', async () => {
   const products = Array.from({ length: 26 }, (_, i) => makeProduct(i + 1));

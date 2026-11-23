@@ -8,6 +8,8 @@ import { productsService, type Product, type ProductStatus } from './products';
 import { settingsService } from './settings';
 
 type Category = { id: string; name: string; parent: { name: string } | null; status: string };
+type VariantDraft = { key: string; id?: string; sku: string; price: string; stock: string; attributes: { title: string; value: string }[] };
+const emptyVariant = (): VariantDraft => ({ key: crypto.randomUUID(), sku: '', price: '', stock: '0', attributes: [] });
 const slugify = (name: string) => name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 140) || 'product';
 const validSlug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const inputClass = 'mt-2 w-full rounded-xl border border-[var(--hl-border)] bg-white px-4 py-3 text-base outline-none transition focus:border-[var(--hl-primary)] focus:ring-2 focus:ring-[var(--hl-primary)]/15';
@@ -32,9 +34,8 @@ export function ProductEditorPage({ id }: { id?: string }) {
   const [categoryLoading, setCategoryLoading] = useState(true);
   const [categoryError, setCategoryError] = useState('');
   const [categoryRetry, setCategoryRetry] = useState(0);
-  const [sku, setSku] = useState('');
-  const [price, setPrice] = useState('');
-  const [stock, setStock] = useState('0');
+  const [variants, setVariants] = useState<VariantDraft[]>([emptyVariant()]);
+  const [variantError, setVariantError] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -50,7 +51,9 @@ export function ProductEditorPage({ id }: { id?: string }) {
     productsService.detail(id).then((value) => {
       if (!active) return;
       setProduct(value); setName(value.name); setSlug(value.slug); setDescription(value.description);
-      setStatus(value.status); setGiftWrapEligible(value.giftWrapEligible); setNewArrival(value.newArrival); setCategoryIds(value.categories.map((category) => category.id)); setLoading(false);
+      setStatus(value.status); setGiftWrapEligible(value.giftWrapEligible); setNewArrival(value.newArrival); setCategoryIds(value.categories.map((category) => category.id));
+      setVariants(value.variants.map(item => ({ key: item.id, id: item.id, sku: item.sku, price: (item.pricePaise / 100).toFixed(2), stock: String(item.stockQuantity), attributes: Array.isArray(item.attributes) ? item.attributes : [] })));
+      setLoading(false);
     }).catch((cause) => { if (active) { setLoadError(errorText(cause)); setLoading(false); } });
     return () => { active = false; };
   }, [id]);
@@ -67,16 +70,20 @@ export function ProductEditorPage({ id }: { id?: string }) {
 
   const selected = categoryIds.map((selectedId) => categories.find((category) => category.id === selectedId) ?? product?.categories.find((category) => category.id === selectedId)).filter((category) => category != null);
   const save = async (event: React.FormEvent) => {
-    event.preventDefault(); setError(''); setFieldError(''); setUploadError('');
+    event.preventDefault(); setError(''); setFieldError(''); setUploadError(''); setVariantError('');
     if (!slug.trim() || !validSlug.test(slug) || slug.length > 160) {
       setFieldError(!slug.trim() ? 'Slug is required.' : 'Use lowercase letters, numbers, and single hyphens only (up to 160 characters).'); slugRef.current?.focus(); return;
     }
     if (status === 'PUBLISHED' && categoryIds.length === 0) { setError('Choose at least one category before publishing.'); categoryRef.current?.focus(); return; }
+    if (!variants.length || variants.some(item => !item.sku.trim() || !item.price || !Number.isFinite(Number(item.price)) || Number(item.price) <= 0 || !Number.isInteger(Number(item.stock)) || Number(item.stock) < 0)) { setVariantError('Every variant needs a SKU, a price above ₹0, and whole-number stock of 0 or more.'); return; }
+    if (new Set(variants.map(item => item.sku.trim().toLowerCase())).size !== variants.length) { setVariantError('Each variant needs a unique SKU.'); return; }
+    if (variants.some(item => item.attributes.some(row => (row.title.trim() || row.value.trim()) && (!row.title.trim() || !row.value.trim())))) { setVariantError('Each attribute needs both a title and a value.'); return; }
+    const variantPayload = variants.map(item => ({ ...(item.id ? { id: item.id } : {}), sku: item.sku.trim(), pricePaise: Math.round(Number(item.price) * 100), stockQuantity: Number(item.stock), attributes: item.attributes.map(row => ({ title: row.title.trim(), value: row.value.trim() })).filter(row => row.title || row.value) }));
     setBusy(true);
     try {
       const saved = savedId
-        ? await productsService.update(savedId, { name, slug, description, categoryIds, giftWrapEligible, newArrival })
-        : await productsService.create({ name, slug, description, categoryIds, sku: sku || undefined, pricePaise: Math.round(Number(price) * 100), stockQuantity: Number(stock), giftWrapEligible, newArrival });
+        ? await productsService.update(savedId, { name, slug, description, categoryIds, variants: variantPayload, giftWrapEligible, newArrival })
+        : await productsService.create({ name, slug, description, categoryIds, variants: variantPayload, giftWrapEligible, newArrival });
       setSavedId(saved.id);
       if (status !== saved.status) await productsService.status(saved.id, status);
       for (const file of [...files]) {
@@ -87,7 +94,7 @@ export function ProductEditorPage({ id }: { id?: string }) {
       router.refresh();
     } catch (cause) {
       const detail = errorText(cause);
-      if (/slug|already exists|unique/i.test(detail)) { setFieldError(detail.includes('already exists') ? 'This slug is already used. Choose another.' : detail); slugRef.current?.focus(); }
+      if (/slug/i.test(detail) && !/SKU/i.test(detail)) { setFieldError(detail.includes('already exists') ? 'This slug is already used. Choose another.' : detail); slugRef.current?.focus(); }
       else setError(detail);
     } finally { setBusy(false); }
   };
@@ -115,7 +122,10 @@ export function ProductEditorPage({ id }: { id?: string }) {
           <label className="mt-5 inline-flex min-h-11 cursor-pointer items-center rounded-xl border border-[var(--hl-border)] px-5 font-semibold text-[var(--hl-primary)] hover:bg-[var(--hl-page)]">Add images<input type="file" multiple accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => { setFiles((current) => [...current, ...Array.from(event.target.files ?? [])]); event.target.value = ''; }} /></label>
           {uploadError && <p role="alert" className="mt-3 text-sm text-[var(--hl-error)]">{uploadError}</p>}
         </section>
-        {!id && <section className={cardClass}><h2 className="font-[family-name:var(--font-display)] text-2xl">Pricing & inventory</h2><p className="mt-1 text-sm text-[var(--hl-muted)]">A SKU is generated when left blank. Stock is tracked on the sellable variant.</p><div className="mt-5 grid gap-4 sm:grid-cols-2"><label className="text-sm font-semibold">Price (₹) <span className="text-[var(--hl-error)]">*</span><input required type="number" min="0" step=".01" value={price} onChange={(event) => setPrice(event.target.value)} className={inputClass} /></label><label className="text-sm font-semibold">Opening stock<input type="number" min="0" step="1" value={stock} onChange={(event) => setStock(event.target.value)} className={inputClass} /></label><label className="text-sm font-semibold sm:col-span-2">SKU (optional)<input value={sku} onChange={(event) => setSku(event.target.value)} className={inputClass} /></label></div></section>}
+        <section className={cardClass}><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-[family-name:var(--font-display)] text-2xl">Variants (SKUs)</h2><p className="mt-1 text-sm text-[var(--hl-muted)]">Each SKU has its own price, stock, and optional features.</p></div><button type="button" onClick={() => setVariants(current => [...current, emptyVariant()])} className="min-h-11 rounded-xl border px-4 font-semibold text-[var(--hl-primary)]">+ Add Variant</button></div>
+          {variantError && <p role="alert" className="mt-3 text-sm text-[var(--hl-error)]">{variantError}</p>}
+          <div className="mt-5 grid gap-4">{variants.map((item, index) => { const duplicate = variants.some(other => other.key !== item.key && other.sku.trim().toLowerCase() === item.sku.trim().toLowerCase() && item.sku.trim()); const change = (patch: Partial<VariantDraft>) => setVariants(current => current.map(row => row.key === item.key ? { ...row, ...patch } : row)); return <div key={item.key} className="rounded-xl border border-[var(--hl-border)] p-4"><div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Variant {index + 1}</h3>{variants.length > 1 && <button type="button" onClick={() => setVariants(current => current.filter(row => row.key !== item.key))} className="min-h-10 text-sm font-semibold text-[var(--hl-error)]">Remove Variant</button>}</div><div className="mt-3 grid gap-4 sm:grid-cols-3"><label className="text-sm font-semibold">SKU *<input required value={item.sku} onChange={event => change({ sku: event.target.value })} aria-invalid={duplicate} className={inputClass}/>{duplicate && <span className="text-xs text-[var(--hl-error)]">This SKU is repeated.</span>}</label><label className="text-sm font-semibold">Price (₹) *<input required type="number" min="0.01" step="0.01" value={item.price} onChange={event => change({ price: event.target.value })} className={inputClass}/></label><label className="text-sm font-semibold">Stock *<input required type="number" min="0" step="1" value={item.stock} onChange={event => change({ stock: event.target.value })} className={inputClass}/></label></div><div className="mt-5"><p className="text-sm font-semibold">Features / Attributes (Optional)</p>{item.attributes.map((row, position) => <div key={position} className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><label className="text-xs font-semibold">Title<input value={row.title} onChange={event => change({ attributes: item.attributes.map((entry, i) => i === position ? { ...entry, title: event.target.value } : entry) })} className={inputClass} placeholder="Size"/></label><label className="text-xs font-semibold">Value<input value={row.value} onChange={event => change({ attributes: item.attributes.map((entry, i) => i === position ? { ...entry, value: event.target.value } : entry) })} className={inputClass} placeholder="Large"/></label><button type="button" onClick={() => change({ attributes: item.attributes.filter((_, i) => i !== position) })} className="self-end min-h-11 text-sm text-[var(--hl-error)]">Remove</button></div>)}<button type="button" onClick={() => change({ attributes: [...item.attributes, { title: '', value: '' }] })} className="mt-3 min-h-10 text-sm font-semibold text-[var(--hl-primary)]">+ Add Attribute</button></div></div>; })}</div>
+        </section>
       </div>
       <aside className={`hidden lg:block ${cardClass}`}>{organization()}</aside>
       {error && <p role="alert" className="text-sm text-[var(--hl-error)] lg:col-span-2">{error}</p>}

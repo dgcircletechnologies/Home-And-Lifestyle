@@ -1,15 +1,91 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { catalog, rupees, type StoreProduct } from './catalog';
-import { useStoreConfig } from './use-store-config';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, ShoppingBag } from 'lucide-react';
+import { catalog, rupees, type StoreProduct, type StoreReviews, type StoreVariant } from './catalog';
 import { StorePhoto } from './storefront-ui';
-export function ProductPage({slug}:{slug:string}) {
-  const [product,setProduct]=useState<StoreProduct>(),[error,setError]=useState(''),[loading,setLoading]=useState(true),[variant,setVariant]=useState(''),[image,setImage]=useState(0),[pin,setPin]=useState(''),[pinResult,setPinResult]=useState('');const store=useStoreConfig();
-  useEffect(()=>{let live=true;catalog.product(slug).then(value=>{if(live){setProduct(value);setVariant(value.variants.length===1?value.variants[0].id:'')}}).catch(()=>{if(live)setError('This piece is not available right now.')}).finally(()=>{if(live)setLoading(false)});return()=>{live=false}},[slug]);
-  if(loading)return <div className="store-detail" role="status">Opening the piece…</div>;
-  if(error||!product)return <div className="store-detail store-empty"><h1>Piece unavailable</h1><p>{error}</p><Link href="/shop">Explore other pieces</Link></div>;
-  const chosen=product.variants.find(item=>item.id===variant);const picture=product.images[image];
-  const checkPin=async(event:React.FormEvent)=>{event.preventDefault();if(!/^[1-9][0-9]{5}$/.test(pin)){setPinResult('Enter a valid six-digit Indian PIN code.');return}try{const result=await catalog.pin(pin);setPinResult(result.message)}catch{setPinResult('Delivery availability is temporarily unavailable.')}};
-  return <div className="store-detail"><div className="store-breadcrumb"><Link href="/">Home</Link><span>/</span>{product.categories[0]&&<><Link href={`/categories/${product.categories[0].slug}`}>{product.categories[0].name}</Link><span>/</span></>}<span>{product.name}</span></div><div className="store-detail-grid"><div className="store-detail-gallery"><div className="store-detail-main-image"><StorePhoto key={picture?.url??'missing'} url={picture?.url} alt={picture?.altText||product.name} priority/></div>{product.images.length>1&&<div className="store-detail-thumbs">{product.images.map((item,index)=><button type="button" key={`${item.url}-${index}`} aria-label={`Show image ${index+1}`} aria-pressed={image===index} onClick={()=>setImage(index)}><img src={item.url} alt=""/></button>)}</div>}</div><div className="store-detail-info"><p className="store-kicker">{product.categories[0]?.name??'Home & Lifestyle'}</p><h1>{product.name}</h1><p className="store-detail-price">{chosen?rupees(chosen.pricePaise):product.minPricePaise===product.maxPricePaise&&product.minPricePaise!==null?rupees(product.minPricePaise):`${rupees(product.minPricePaise??0)} – ${rupees(product.maxPricePaise??0)}`}</p><p className="store-detail-description">{product.description}</p>{product.story&&<p className="store-detail-story">{product.story}</p>}<div className="store-detail-choice"><label htmlFor="variant">{product.variants.length>1?'Choose your variant':'Selected piece'}</label><select id="variant" value={variant} onChange={e=>setVariant(e.target.value)}><option value="">Select an option</option>{product.variants.map(item=><option key={item.id} value={item.id}>{item.optionCombinationKey||item.sku} · {rupees(item.pricePaise)}{!item.available?' · Unavailable':''}</option>)}</select>{chosen&&<p>{chosen.available?'Available':'Currently unavailable'} · SKU {chosen.sku}</p>}</div>{product.giftWrapEligible&&<p className="store-detail-gift">Gift wrapping may be available for this piece. {store?.gifting.giftMessagesAvailable?'A personal message can be included.':''}</p>}<form className="store-detail-pin" onSubmit={checkPin}><label htmlFor="product-pin">Check delivery PIN</label><div><input id="product-pin" inputMode="numeric" maxLength={6} value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,''))} placeholder="Six-digit PIN"/><button>Check</button></div>{pinResult&&<p role="status">{pinResult}</p>}</form><p className="store-detail-note">Shopping bag and checkout are being prepared. Browse this piece and check availability now.</p><Link className="store-text-link" href="/shop">Continue exploring →</Link></div></div></div>;
+import { ProductAboutSection } from './product-about-section';
+import { ProductReviewsSection } from './product-reviews-section';
+
+type PurchaseIntent = { productId: string; variantId: string; sku: string; quantity: number };
+type Tab = 'about' | 'reviews';
+const lowStock = (stock: number) => stock > 0 && stock <= 5;
+
+export function ProductPage({ slug }: { slug: string }) {
+  const [product, setProduct] = useState<StoreProduct>();
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [variantId, setVariantId] = useState('');
+  const [image, setImage] = useState(0);
+  const [tab, setTab] = useState<Tab>('about');
+  const [notice, setNotice] = useState('');
+  const [reviews, setReviews] = useState<StoreReviews>();
+  const [reviewError, setReviewError] = useState('');
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const aboutRef = useRef<HTMLButtonElement>(null);
+  const reviewsRef = useRef<HTMLButtonElement>(null);
+  const swipeStart = useRef<number | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    catalog.product(slug).then(value => {
+      if (!live) return;
+      setProduct(value);
+      const sorted = [...value.variants].sort((a, b) => a.effectivePricePaise - b.effectivePricePaise || a.id.localeCompare(b.id));
+      setVariantId((sorted.find(item => item.stockQuantity > 0) ?? sorted[0])?.id ?? '');
+    }).catch(() => { if (live) setError('This piece is not available right now.'); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [slug]);
+
+  const loadReviews = useCallback(async (page = 1) => {
+    setReviewsLoading(true); setReviewError('');
+    try {
+      const next = await catalog.reviews(slug, page);
+      setReviews(current => page === 1 || !current ? next : { ...next, items: [...current.items, ...next.items] });
+    } catch { setReviewError('Reviews could not be loaded. Please try again.'); }
+    finally { setReviewsLoading(false); }
+  }, [slug]);
+  useEffect(() => {
+    let live = true;
+    catalog.reviews(slug).then(value => { if (live) setReviews(value); })
+      .catch(() => { if (live) setReviewError('Reviews could not be loaded. Please try again.'); })
+      .finally(() => { if (live) setReviewsLoading(false); });
+    return () => { live = false; };
+  }, [slug]);
+
+  if (loading) return <div className="store-detail store-pdp" role="status">Opening the piece…</div>;
+  if (error || !product) return <div className="store-detail store-empty"><h1>Piece unavailable</h1><p>{error}</p><Link href="/shop">Explore other pieces</Link></div>;
+  const chosen = product.variants.find(item => item.id === variantId);
+  const images = product.images ?? [];
+  const picture = images[image];
+  const moveImage = (direction: number) => setImage(current => (current + direction + images.length) % images.length);
+  const chooseReviews = () => {
+    setTab('reviews');
+    requestAnimationFrame(() => tabsRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' }));
+  };
+  const preparePurchase = (kind: 'cart' | 'checkout', variant: StoreVariant) => {
+    const intent: PurchaseIntent = { productId: product.id, variantId: variant.id, sku: variant.sku, quantity: 1 };
+    // The intent is ready for the future cart and checkout writers; no order or reservation is created here.
+    setNotice(`${kind === 'cart' ? 'Cart' : 'Checkout'} coming soon for ${intent.sku}.`);
+  };
+  const switchTab = (next: Tab) => { setTab(next); (next === 'about' ? aboutRef : reviewsRef).current?.focus(); };
+  const reviewCount = reviews?.summary.reviewCount ?? 0;
+  const stock = chosen?.stockQuantity ?? 0;
+
+  return <div className="store-detail store-pdp">
+    <nav className="store-breadcrumb" aria-label="Breadcrumb"><Link href="/">Home</Link><span aria-hidden="true">/</span>{product.categories[0] && <><Link href={`/categories/${product.categories[0].slug}`}>{product.categories[0].name}</Link><span aria-hidden="true">/</span></>}<span aria-current="page">{product.name}</span></nav>
+    <div className="store-pdp-grid">
+      <section className="store-pdp-gallery" aria-label={`${product.name} gallery`}><div className="store-pdp-main" onTouchStart={event => { swipeStart.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={event => { if (swipeStart.current === null || images.length < 2) return; const distance = event.changedTouches[0]?.clientX - swipeStart.current; if (Math.abs(distance) > 50) moveImage(distance < 0 ? 1 : -1); swipeStart.current = null; }}><StorePhoto key={picture?.url ?? 'missing'} url={picture?.url} alt={picture?.altText || product.name} priority/>{images.length > 1 && <><button type="button" className="store-gallery-arrow store-gallery-prev" aria-label="Previous image" onClick={() => moveImage(-1)}><ArrowLeft size={21}/></button><button type="button" className="store-gallery-arrow store-gallery-next" aria-label="Next image" onClick={() => moveImage(1)}><ArrowRight size={21}/></button><span className="store-gallery-count" aria-live="polite">{image + 1} / {images.length}</span></>}</div>{images.length > 1 && <div className="store-pdp-thumbnails" aria-label="Product images">{images.map((item, index) => <button type="button" key={`${item.url}-${index}`} aria-label={`Show image ${index + 1}`} aria-pressed={image === index} onClick={() => setImage(index)}><img src={item.url} alt=""/></button>)}</div>}</section>
+      <section className="store-pdp-summary" aria-label="Product information"><p className="store-kicker">{product.categories[0]?.name ?? 'Home & Lifestyle'}</p><h1>{product.name}</h1><button type="button" className="store-pdp-rating" onClick={chooseReviews} aria-label={reviewCount ? `Rated ${reviews?.summary.averageRating?.toFixed(1)} out of 5 from ${reviewCount} reviews. Read reviews.` : 'No reviews yet. Read reviews.'}><span className="store-pdp-stars" aria-hidden="true"><span className="store-pdp-stars-base">★★★★★</span><span className="store-pdp-stars-fill" style={{ width: `${(reviews?.summary.averageRating ?? 0) * 20}%` }}>★★★★★</span></span></button>
+        {chosen && <div className="store-pdp-price"><strong>{rupees(chosen.effectivePricePaise)}</strong>{chosen.compareAtPricePaise && <del>{rupees(chosen.compareAtPricePaise)}</del>}</div>}
+        <div className="store-pdp-variants"><div className="store-pdp-label-row"><h2>{product.variants.length > 1 ? 'Select your piece' : 'Your piece'}</h2>{chosen && <span>SKU {chosen.sku}</span>}</div><div className="store-variant-options" role="group" aria-label="Variant prices">{product.variants.map(item => <button type="button" key={item.id} aria-label={`${item.sku}, ${rupees(item.effectivePricePaise)}${item.stockQuantity === 0 ? ', out of stock' : ''}`} aria-pressed={item.id === variantId} onClick={() => { setVariantId(item.id); setNotice(''); }}><span>{rupees(item.effectivePricePaise)}</span>{item.compareAtPricePaise && <del>{rupees(item.compareAtPricePaise)}</del>}{!item.available && <small>Out of stock</small>}</button>)}</div></div>
+        {chosen && <div className="store-pdp-stock" data-stock={stock === 0 ? 'out' : lowStock(stock) ? 'low' : 'in'}><span aria-hidden="true"/>{stock === 0 ? 'Out of stock' : lowStock(stock) ? `Low stock · ${stock} left` : 'In stock'}</div>}
+        {chosen && Array.isArray(chosen.attributes) && chosen.attributes.length > 0 && <div className="store-pdp-feature-preview">{chosen.attributes.filter(item => item.title && item.value).map((item, index) => <span key={`${item.title}-${index}`}><strong>{item.title}:</strong> {item.value}</span>)}</div>}
+        <div className="store-pdp-actions"><button type="button" className="store-pdp-button store-pdp-button-primary" disabled={!chosen || stock <= 0} onClick={() => { if (chosen) preparePurchase('cart', chosen); }}><ShoppingBag size={18}/> Add to Cart</button><button type="button" className="store-pdp-button store-pdp-button-secondary" disabled={!chosen || stock <= 0} onClick={() => { if (chosen) preparePurchase('checkout', chosen); }}>Order Now <ArrowRight size={17}/></button></div>{notice && <p className="store-pdp-notice" role="status">{notice}</p>}
+      </section>
+    </div>
+    <div className="store-pdp-tabs" ref={tabsRef}><div className="store-pdp-tablist" role="tablist" aria-label="Product details" onKeyDown={event => { if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); switchTab(tab === 'about' ? 'reviews' : 'about'); } }}><button type="button" role="tab" id="product-tab-about" ref={aboutRef} aria-controls="product-panel-about" aria-selected={tab === 'about'} tabIndex={tab === 'about' ? 0 : -1} onClick={() => setTab('about')}>About</button><button type="button" role="tab" id="product-tab-reviews" ref={reviewsRef} aria-controls="product-panel-reviews" aria-selected={tab === 'reviews'} tabIndex={tab === 'reviews' ? 0 : -1} onClick={() => setTab('reviews')}>Reviews ({reviewCount})</button></div><div role="tabpanel" id={`product-panel-${tab}`} aria-labelledby={`product-tab-${tab}`} tabIndex={0}>{tab === 'about' ? <ProductAboutSection product={product} variant={chosen}/> : <ProductReviewsSection slug={slug} reviews={reviews} loading={reviewsLoading} error={reviewError} onRefresh={() => void loadReviews()} onLoadMore={() => void loadReviews((reviews?.page ?? 1) + 1)}/>}</div></div>
+  </div>;
 }

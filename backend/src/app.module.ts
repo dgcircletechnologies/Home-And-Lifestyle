@@ -23,6 +23,8 @@ import { AdminPromotionsController } from './promotions/admin-promotions.control
 import { AdminPromotionsService } from './promotions/admin-promotions.service';
 import { AdminReviewsController } from './reviews/admin-reviews.controller';
 import { AdminReviewsService } from './reviews/admin-reviews.service';
+import { PublicReviewsController, CustomerReviewsController } from './reviews/storefront-reviews.controller';
+import { StorefrontReviewsService } from './reviews/storefront-reviews.service';
 import { ProfilePhotoService } from './users/profile-photo.service';
 import { AdminOverviewController } from './dashboard/admin-overview.controller';
 import { AdminOverviewService } from './dashboard/admin-overview.service';
@@ -31,5 +33,5 @@ import { AdminSettingsService } from './settings/admin-settings.service';
 import { StorefrontController } from './storefront/storefront.controller';
 import { StorefrontService } from './storefront/storefront.service';
 import { ShopService } from './storefront/shop.service';
-@Module({ controllers: [HealthController, AuthController, AccountController, AdminController, AdminOverviewController, AdminSettingsController, PublicStoreConfigController, StorefrontController, AdminCustomersController, AdminStorefrontNavigationController, AdminCategoriesController, AdminProductsController, AdminOrdersController, AdminPaymentsController, AdminPromotionsController, AdminReviewsController], providers: [PasswordPolicy, MailService, AccessTokens, PrismaService, UsersService, AuthService, AdminOverviewService, AdminSettingsService, StorefrontService, ShopService, AdminCustomersService, AdminCategoriesService, CategoryImageService, AdminProductsService, AdminOrdersService, AdminPromotionsService, AdminReviewsService, ProfilePhotoService, { provide: APP_GUARD, useClass: AccessGuard }] })
+@Module({ controllers: [HealthController, AuthController, AccountController, AdminController, AdminOverviewController, AdminSettingsController, PublicStoreConfigController, StorefrontController, PublicReviewsController, CustomerReviewsController, AdminCustomersController, AdminStorefrontNavigationController, AdminCategoriesController, AdminProductsController, AdminOrdersController, AdminPaymentsController, AdminPromotionsController, AdminReviewsController], providers: [PasswordPolicy, MailService, AccessTokens, PrismaService, UsersService, AuthService, AdminOverviewService, AdminSettingsService, StorefrontService, StorefrontReviewsService, ShopService, AdminCustomersService, AdminCategoriesService, CategoryImageService, AdminProductsService, AdminOrdersService, AdminPromotionsService, AdminReviewsService, ProfilePhotoService, { provide: APP_GUARD, useClass: AccessGuard }] })
 export class AppModule {}

@@ -2,17 +2,15 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowRight, MapPin } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { catalog, productHref, type StoreHome } from './catalog';
 import { CategoryTile, ProductCard, ProductImage } from './storefront-ui';
 import { HomeOffersStrip, offerBadge } from './home-offers';
 
 export function Homepage() {
   const [data,setData]=useState<StoreHome>(),[loading,setLoading]=useState(true),[error,setError]=useState('');
-  const [pin,setPin]=useState(''),[pinBusy,setPinBusy]=useState(false),[pinMessage,setPinMessage]=useState(''),[pinAvailable,setPinAvailable]=useState<boolean|null>(null);
   const load=useCallback(()=>{setLoading(true);setError('');catalog.home().then(setData).catch(()=>setError('The shop could not load. Please try again.')).finally(()=>setLoading(false))},[]);
   useEffect(()=>{let live=true;catalog.home().then(value=>{if(live)setData(value)}).catch(()=>{if(live)setError('The shop could not load. Please try again.')}).finally(()=>{if(live)setLoading(false)});return()=>{live=false}},[]);
-  const checkPin=async(event:React.FormEvent)=>{event.preventDefault();if(!/^[1-9][0-9]{5}$/.test(pin)){setPinMessage('Enter a valid six-digit Indian PIN code.');setPinAvailable(false);return}setPinBusy(true);setPinMessage('');try{const result=await catalog.pin(pin);setPinMessage(result.message);setPinAvailable(result.available)}catch{setPinMessage('Delivery availability is temporarily unavailable. Please try again.');setPinAvailable(null)}finally{setPinBusy(false)}};
   if(loading)return <div className="store-home store-home-loading" role="status"><div className="store-hero-skeleton"/><div className="store-section"><p>Preparing the shop…</p></div></div>;
   if(error)return <div className="store-home store-empty"><h1>We could not open the shop.</h1><p>{error}</p><button className="store-home-cta" onClick={load}>Try again</button></div>;
   if(!data)return null;
@@ -33,7 +31,6 @@ export function Homepage() {
     {edit?.products?.[0]?.image&&<section className="store-section store-edit" aria-labelledby="edit-title"><div className="store-edit-art"><ProductImage product={edit.products[0]}/></div><div className="store-edit-copy"><p className="store-kicker">Shop the edit</p><h2 id="edit-title">{edit.name}</h2><p>{edit.description??'A few pieces that feel right together.'}</p><Link className="store-cta store-home-cta" href={`/collections/${edit.slug}`}>Explore the collections <ArrowRight size={18}/></Link></div></section>}
     {categoryRows.map(({category,products})=><section key={category.id} className="store-section store-home-category-row" aria-labelledby={`home-category-${category.id}`}><div className="store-section-heading"><div><p className="store-kicker">Explore the collection</p><div className="store-home-category-title"><h2 id={`home-category-${category.id}`}>Shop {category.name}</h2>{categoryOffers.get(category.id)&&<span className="store-category-offer-badge">{offerBadge(categoryOffers.get(category.id)!)}</span>}</div></div><Link href={`/categories/${category.slug}`} className="store-text-link store-home-cta">Shop all <ArrowRight size={17}/></Link></div><div className="store-product-grid" role="region" aria-label={`Shop ${category.name} products`} tabIndex={0}>{products.map(product=><ProductCard key={product.id} product={product} shop/>)}</div></section>)}
     {giftProducts.length>0&&<section className="store-section store-gifting" aria-labelledby="gifting-title"><div><p className="store-kicker">A thoughtful gesture</p><h2 id="gifting-title">A good gift feels personal.</h2><p>Discover pieces selected for giving, from small accents to everyday favorites.</p><Link className="store-text-link store-home-cta" href={giftingHref}>Explore giftable pieces <ArrowRight size={17}/></Link></div><div className="store-gifting-pieces">{giftProducts.slice(0,2).map(product=><Link href={productHref(product)} key={product.id}><ProductImage product={product}/><span>{product.name}</span></Link>)}</div></section>}
-    <section className="store-section store-delivery" aria-labelledby="delivery-title"><div><p className="store-kicker">Before you fall in love</p><h2 id="delivery-title">Check delivery to your PIN.</h2><p>Availability is based on your destination. Charges and arrival depend on the pieces you choose.</p></div><form onSubmit={checkPin}><label htmlFor="delivery-pin">Indian PIN code</label><div><MapPin size={20}/><input id="delivery-pin" inputMode="numeric" maxLength={6} value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,''))} placeholder="e.g. 110001"/><button className="store-home-cta" disabled={pinBusy}>{pinBusy?'Checking…':'Check'}</button></div>{pinMessage&&<p role="status" className={pinAvailable===true?'store-pin-yes':'store-pin-no'}>{pinMessage}</p>}</form></section>
 
   </div>;
 }

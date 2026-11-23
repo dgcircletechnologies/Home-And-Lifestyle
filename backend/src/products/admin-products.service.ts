@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 
 const missing = () => new NotFoundException({ code: 'PRODUCT_NOT_FOUND', message: 'Product not found.' });
 const conflict = (message: string) => new ConflictException({ code: 'PRODUCT_CONFLICT', message });
+type VariantInput = { id?: string; sku: string; pricePaise: number; stockQuantity: number; attributes: { title: string; value: string }[] };
 const productFields = { id: true, name: true, slug: true, description: true, story: true, materials: true, careInstructions: true, status: true, isFeatured: true, giftWrapEligible: true, createdAt: true, updatedAt: true } as const;
 const productInclude = { categories: { include: { category: { select: { id: true, name: true, slug: true } } } }, tags: { include: { tag: { select: { slug: true } } } }, images: { orderBy: [{ position: 'asc' }, { id: 'asc' }] }, variants: { include: { images: { orderBy: [{ position: 'asc' }, { id: 'asc' }] }, selections: { include: { value: { include: { option: true } } } }, stockReceipts: { orderBy: { createdAt: 'desc' }, take: 25, include: { admin: { select: { id: true, name: true } } } } }, orderBy: { sku: 'asc' } } } satisfies Prisma.ProductInclude;
 // Prisma's list and detail selections intentionally differ; this common admin projection normalises both.
@@ -19,6 +20,12 @@ export class AdminProductsService {
   async categoryOptions(search?: string) { return this.db.category.findMany({ where: { deletedAt: null, ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}) }, select: { id: true, name: true, parentId: true, status: true, parent: { select: { name: true } } }, orderBy: [{ name: 'asc' }, { id: 'asc' }], take: 500 }); }
   private baseSlug(name: string) { return name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 140) || 'product'; }
   private async generatedSlug(name: string) { const base = this.baseSlug(name); for (let i = 0; i < 20; i++) { const slug = i ? `${base}-${i + 1}` : base; if (!await this.db.product.findUnique({ where: { slug }, select: { id: true } })) return slug; } return `${base}-${randomUUID().slice(0, 8)}`; }
+  private async checkSkus(variants: VariantInput[], tx: Prisma.TransactionClient | PrismaService = this.db) {
+    const matches = await tx.productVariant.findMany({ where: { OR: variants.map(variant => ({ sku: { equals: variant.sku, mode: 'insensitive' as const } })) }, select: { id: true, sku: true } });
+    const held = new Set(variants.map(variant => variant.id).filter(Boolean));
+    const duplicate = matches.find(match => !held.has(match.id));
+    if (duplicate) throw conflict(`SKU ${duplicate.sku} is already used by another variant.`);
+  }
   async list(query: { page: number; pageSize: number; search?: string; status: 'all' | ProductStatus; categoryId?: string; stock: 'all' | 'in' | 'out'; sort: 'name' | 'createdAt' | 'updatedAt' }) {
     const where: Prisma.ProductWhereInput = { ...(query.status === 'all' ? {} : { status: query.status }), ...(query.categoryId ? { categories: { some: { categoryId: query.categoryId } } } : {}), ...(query.stock === 'in' ? { variants: { some: { stockQuantity: { gt: 0 } } } } : query.stock === 'out' ? { variants: { none: { stockQuantity: { gt: 0 } } } } : {}), ...(query.search ? { OR: [{ name: { contains: query.search, mode: 'insensitive' } }, { slug: { contains: query.search, mode: 'insensitive' } }, { variants: { some: { sku: { contains: query.search, mode: 'insensitive' } } } }] } : {}) };
     const direction = query.sort === 'name' ? 'asc' as const : 'desc' as const;
@@ -26,14 +33,42 @@ export class AdminProductsService {
     return { items: rows.map(dto), page: query.page, pageSize: query.pageSize, total };
   }
   async detail(id: string) { return dto(await this.product(id)); }
-  async create(input: { name: string; slug: string; description: string; story?: string | null; materials?: string[]; careInstructions?: string | null; categoryIds?: string[]; sku?: string; pricePaise: number; stockQuantity?: number; giftWrapEligible?: boolean; newArrival?: boolean }) {
+  async create(input: { name: string; slug: string; description: string; story?: string | null; materials?: string[]; careInstructions?: string | null; categoryIds?: string[]; variants: VariantInput[]; giftWrapEligible?: boolean; newArrival?: boolean }) {
     await this.categories(input.categoryIds);
-    const slug = input.slug; const sku = input.sku || `SKU-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+    if (input.variants.some(variant => variant.id)) throw new BadRequestException('New variants cannot include an ID.');
+    await this.checkSkus(input.variants);
+    const slug = input.slug;
     const defaultWrap = (await this.db.storeSettings.findUnique({ where: { id: 'store' }, select: { giftWrapDefaultEligible: true } }))?.giftWrapDefaultEligible ?? false;
-    try { const row = await this.db.product.create({ data: { name: input.name, slug, description: input.description, story: input.story ?? null, materials: input.materials ?? [], careInstructions: input.careInstructions ?? null, giftWrapEligible: input.giftWrapEligible ?? defaultWrap, categories: input.categoryIds?.length ? { create: input.categoryIds.map(categoryId => ({ categoryId })) } : undefined, variants: { create: { sku, pricePaise: input.pricePaise, stockQuantity: input.stockQuantity ?? 0, optionCombinationKey: '[]' } } }, include: productInclude }); if (input.newArrival) await this.setNewArrival(row.id, true); return dto(input.newArrival ? await this.product(row.id) : row); }
-    catch (error) { if ((error as { code?: string }).code === 'P2002') throw conflict('The product slug or SKU already exists.'); throw error; }
+    try { const row = await this.db.product.create({ data: { name: input.name, slug, description: input.description, story: input.story ?? null, materials: input.materials ?? [], careInstructions: input.careInstructions ?? null, giftWrapEligible: input.giftWrapEligible ?? defaultWrap, categories: input.categoryIds?.length ? { create: input.categoryIds.map(categoryId => ({ categoryId })) } : undefined, variants: { create: input.variants.map(variant => ({ sku: variant.sku, pricePaise: variant.pricePaise, stockQuantity: variant.stockQuantity, attributes: variant.attributes, optionCombinationKey: `sku-${randomUUID()}` })) } }, include: productInclude }); if (input.newArrival) await this.setNewArrival(row.id, true); return dto(input.newArrival ? await this.product(row.id) : row); }
+    catch (error) { if ((error as { code?: string }).code === 'P2002') throw conflict('The product slug or a variant SKU already exists.'); throw error; }
   }
-  async update(id: string, input: { name?: string; slug?: string; description?: string; story?: string | null; materials?: string[]; careInstructions?: string | null; isFeatured?: boolean; giftWrapEligible?: boolean; categoryIds?: string[]; newArrival?: boolean }) { await this.categories(input.categoryIds); try { const row = await this.db.product.update({ where: { id }, data: { ...(input.name !== undefined ? { name: input.name } : {}), ...(input.slug !== undefined ? { slug: input.slug } : {}), ...(input.description !== undefined ? { description: input.description } : {}), ...(input.story !== undefined ? { story: input.story } : {}), ...(input.materials !== undefined ? { materials: input.materials } : {}), ...(input.careInstructions !== undefined ? { careInstructions: input.careInstructions } : {}), ...(input.isFeatured !== undefined ? { isFeatured: input.isFeatured } : {}), ...(input.giftWrapEligible !== undefined ? { giftWrapEligible: input.giftWrapEligible } : {}), ...(input.categoryIds !== undefined ? { categories: { deleteMany: {}, create: input.categoryIds.map(categoryId => ({ categoryId })) } } : {}) }, include: productInclude }); if (input.newArrival !== undefined) await this.setNewArrival(id, input.newArrival); return dto(input.newArrival !== undefined ? await this.product(id) : row); } catch (error) { if ((error as { code?: string }).code === 'P2002') throw conflict('The product slug already exists.'); throw error; } }
+  async update(id: string, input: { name?: string; slug?: string; description?: string; story?: string | null; materials?: string[]; careInstructions?: string | null; isFeatured?: boolean; giftWrapEligible?: boolean; categoryIds?: string[]; newArrival?: boolean; variants?: VariantInput[] }) {
+    await this.categories(input.categoryIds);
+    try {
+      const row = await this.db.$transaction(async tx => {
+        if (input.variants) {
+          const existing = await tx.productVariant.findMany({ where: { productId: id }, select: { id: true, sku: true } });
+          if (input.variants.some(variant => variant.id && !existing.some(old => old.id === variant.id))) throw new BadRequestException('A variant ID does not belong to this product.');
+          await this.checkSkus(input.variants, tx);
+          const removed = existing.filter(old => !input.variants!.some(variant => variant.id === old.id));
+          if (removed.length) {
+            const ids = removed.map(variant => variant.id);
+            const [cart, orders, receipts, bundles] = await Promise.all([tx.cartLine.count({ where: { variantId: { in: ids } } }), tx.orderLine.count({ where: { variantId: { in: ids } } }), tx.productStockReceipt.count({ where: { variantId: { in: ids } } }), tx.bundleComponent.count({ where: { OR: [{ bundleVariantId: { in: ids } }, { componentVariantId: { in: ids } }] } })]);
+            if (cart || orders || receipts || bundles) throw new BadRequestException('A removed SKU is linked to a cart, order, stock receipt, or bundle. Keep that variant and set its stock to 0.');
+            await tx.productVariant.deleteMany({ where: { id: { in: ids }, productId: id } });
+          }
+          for (const variant of input.variants) {
+            const data = { sku: variant.sku, pricePaise: variant.pricePaise, stockQuantity: variant.stockQuantity, attributes: variant.attributes };
+            if (variant.id) await tx.productVariant.update({ where: { id: variant.id }, data });
+            else await tx.productVariant.create({ data: { productId: id, ...data, optionCombinationKey: `sku-${randomUUID()}` } });
+          }
+        }
+        return tx.product.update({ where: { id }, data: { ...(input.name !== undefined ? { name: input.name } : {}), ...(input.slug !== undefined ? { slug: input.slug } : {}), ...(input.description !== undefined ? { description: input.description } : {}), ...(input.story !== undefined ? { story: input.story } : {}), ...(input.materials !== undefined ? { materials: input.materials } : {}), ...(input.careInstructions !== undefined ? { careInstructions: input.careInstructions } : {}), ...(input.isFeatured !== undefined ? { isFeatured: input.isFeatured } : {}), ...(input.giftWrapEligible !== undefined ? { giftWrapEligible: input.giftWrapEligible } : {}), ...(input.categoryIds !== undefined ? { categories: { deleteMany: {}, create: input.categoryIds.map(categoryId => ({ categoryId })) } } : {}) }, include: productInclude });
+      });
+      if (input.newArrival !== undefined) await this.setNewArrival(id, input.newArrival);
+      return dto(input.newArrival !== undefined ? await this.product(id) : row);
+    } catch (error) { if ((error as { code?: string }).code === 'P2002') throw conflict('The product slug or a variant SKU already exists.'); if ((error as { code?: string }).code === 'P2003') throw conflict('A removed SKU is still in use. Keep it and set its stock to 0.'); throw error; }
+  }
   private async setNewArrival(productId: string, selected: boolean) { const tag = await this.db.tag.upsert({ where: { slug: 'new-arrival' }, create: { name: 'New Arrival', slug: 'new-arrival' }, update: {} }); if (selected) await this.db.productTag.upsert({ where: { productId_tagId: { productId, tagId: tag.id } }, create: { productId, tagId: tag.id }, update: {} }); else await this.db.productTag.deleteMany({ where: { productId, tagId: tag.id } }); }
   async status(id: string, status: ProductStatus) { const current = await this.product(id); if (status === 'PUBLISHED' && (!current.categories.length || !current.variants.length)) throw new BadRequestException({ code: 'PRODUCT_NOT_READY', message: 'Add at least one category and sellable SKU before publishing.' }); return dto(await this.db.product.update({ where: { id }, data: { status }, include: productInclude })); }
   async archive(id: string) { return this.status(id, 'ARCHIVED'); }

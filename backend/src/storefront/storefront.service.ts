@@ -7,13 +7,17 @@ import { activeAutomaticPromotionWhere } from '../promotions/public-promotion';
 
 const activeCollection = (now: Date): Prisma.CollectionWhereInput => ({ AND: [{ OR: [{ startsAt: null }, { startsAt: { lte: now } }] }, { OR: [{ endsAt: null }, { endsAt: { gt: now } }] }] });
 const productSelect = {
-  id: true, name: true, slug: true, description: true, story: true, isFeatured: true, giftWrapEligible: true, createdAt: true,
+  id: true, name: true, slug: true, description: true, story: true, materials: true, dimensions: true, careInstructions: true, isFeatured: true, giftWrapEligible: true, createdAt: true,
+  attributes: { select: { key: true, textValue: true, numericValue: true, unit: true } },
+  tags: { select: { tag: { select: { name: true } } } },
+  collections: { select: { collection: { select: { name: true } } } },
   images: { orderBy: [{ position: 'asc' as const }, { id: 'asc' as const }], take: 2, select: { url: true, altText: true } },
-  variants: { orderBy: { pricePaise: 'asc' as const }, select: { id: true, sku: true, pricePaise: true, compareAtPricePaise: true, stockQuantity: true, optionCombinationKey: true } },
-  categories: { where: { category: { status: 'ACTIVE' as const, deletedAt: null } }, select: { category: { select: { name: true, slug: true } } } },
+  variants: { orderBy: { pricePaise: 'asc' as const }, select: { id: true, sku: true, pricePaise: true, compareAtPricePaise: true, stockQuantity: true, optionCombinationKey: true, attributes: true, dimensions: true } },
+  categories: { where: { category: { status: 'ACTIVE' as const, deletedAt: null } }, select: { categoryId: true, category: { select: { name: true, slug: true } } } },
 } satisfies Prisma.ProductSelect;
 
 type ProductRow = Prisma.ProductGetPayload<{ select: typeof productSelect }>;
+type PriceRules = { rules: { id: string; productId: string | null; categoryId: string | null; kind: string; amountPaise: number | null; percentBasisPoints: number | null }[]; branches: Map<string, string[]> };
 
 @Injectable()
 export class StorefrontService {
@@ -22,13 +26,24 @@ export class StorefrontService {
     const tree = await categoryVisibility(this.db);
     return { status: 'PUBLISHED', categories: { some: { categoryId: { in: tree.categories.filter(category => tree.isActive(category.id)).map(category => category.id) } } } };
   }
-  private card(row: ProductRow) {
-    const prices = row.variants.map((variant: { pricePaise: number }) => variant.pricePaise);
+  private async priceRules(): Promise<PriceRules> {
+    const [rules, tree] = await Promise.all([this.db.promotion.findMany({ where: activeAutomaticPromotionWhere(new Date()), select: { id: true, productId: true, categoryId: true, kind: true, amountPaise: true, percentBasisPoints: true } }), categoryVisibility(this.db)]);
+    return { rules, branches: new Map(tree.categories.map(category => [category.id, branchIds(tree, category.id)])) };
+  }
+  private card(row: ProductRow, pricing: PriceRules) {
+    const variants = row.variants.map(variant => {
+      const applicable = pricing.rules.filter(rule => rule.productId === row.id || rule.categoryId && row.categories.some(link => pricing.branches.get(rule.categoryId!)?.includes(link.categoryId)));
+      const discount = applicable.map(rule => ({ id: rule.id, amount: Math.min(variant.pricePaise, rule.kind === 'FIXED' ? rule.amountPaise ?? 0 : Math.floor((variant.pricePaise * (rule.percentBasisPoints ?? 0) + 5000) / 10000)) })).sort((a, b) => b.amount - a.amount || a.id.localeCompare(b.id))[0]?.amount ?? 0;
+      return { id: variant.id, sku: variant.sku, pricePaise: variant.pricePaise, effectivePricePaise: variant.pricePaise - discount, compareAtPricePaise: discount ? variant.pricePaise : null, stockQuantity: variant.stockQuantity, attributes: variant.attributes ?? [], dimensions: variant.dimensions, optionCombinationKey: variant.optionCombinationKey, available: variant.stockQuantity > 0 };
+    }).sort((a, b) => a.effectivePricePaise - b.effectivePricePaise || a.id.localeCompare(b.id));
+    const cheapest = variants[0];
     return { id: row.id, name: row.name, slug: row.slug, description: row.description, story: row.story, isFeatured: row.isFeatured, giftWrapEligible: row.giftWrapEligible,
-      image: row.images[0] ?? null, images: row.images, minPricePaise: prices.length ? Math.min(...prices) : null, maxPricePaise: prices.length ? Math.max(...prices) : null,
-      compareAtPricePaise: null,
+      image: row.images[0] ?? null, images: row.images, minPricePaise: cheapest?.effectivePricePaise ?? null, maxPricePaise: variants.at(-1)?.effectivePricePaise ?? null,
+      compareAtPricePaise: cheapest?.compareAtPricePaise ?? null, variantCount: variants.length,
       available: row.variants.some((variant: { stockQuantity: number }) => variant.stockQuantity > 0),
-      variants: row.variants.map(variant => ({ id: variant.id, sku: variant.sku, pricePaise: variant.pricePaise, optionCombinationKey: variant.optionCombinationKey, available: variant.stockQuantity > 0 })),
+      variants, materials: row.materials, dimensions: row.dimensions, careInstructions: row.careInstructions,
+      attributes: row.attributes.map(attribute => ({ key: attribute.key, value: attribute.textValue ?? (attribute.numericValue === null ? null : `${attribute.numericValue}${attribute.unit ? ` ${attribute.unit}` : ''}`) })).filter(attribute => attribute.value),
+      tags: row.tags.map(link => link.tag.name), collections: row.collections.map(link => link.collection.name),
       categories: row.categories.map((link: { category: { name: string; slug: string } }) => link.category) };
   }
   async navigation() {
@@ -93,7 +108,7 @@ export class StorefrontService {
   async home() {
     const now = new Date();
     const visible = await this.publicProductWhere();
-    const [categories, featured, latest, giftable, collections, shop, offers] = await Promise.all([
+    const [categories, featured, latest, giftable, collections, shop, offers, pricing] = await Promise.all([
       this.directory(),
       this.db.product.findMany({ where: { ...visible, isFeatured: true, variants: { some: {} } }, select: productSelect, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 8 }),
       this.db.product.findMany({ where: { ...visible, variants: { some: {} } }, select: productSelect, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 8 }),
@@ -101,8 +116,9 @@ export class StorefrontService {
       this.db.collection.findMany({ where: { ...activeCollection(now), products: { some: { product: visible } } }, select: { name: true, slug: true, description: true, products: { where: { product: visible }, orderBy: { position: 'asc' }, take: 3, select: { product: { select: productSelect } } } }, orderBy: [{ position: 'asc' }, { name: 'asc' }], take: 6 }),
       this.shopService.list({ sort: 'newest', page: 1, pageSize: 20, includeCategoryRows: true }),
       this.offers(now),
+      this.priceRules(),
     ]);
-    return { categories, featured: featured.map(row => this.card(row)), latest: latest.map(row => this.card(row)), giftable: giftable.map(row => this.card(row)), collections: collections.map(row => ({ name: row.name, slug: row.slug, description: row.description, products: row.products.map(link => this.card(link.product)) })), categoryRows: shop.categoryRows ?? [], offers };
+    return { categories, featured: featured.map(row => this.card(row, pricing)), latest: latest.map(row => this.card(row, pricing)), giftable: giftable.map(row => this.card(row, pricing)), collections: collections.map(row => ({ name: row.name, slug: row.slug, description: row.description, products: row.products.map(link => this.card(link.product, pricing)) })), categoryRows: shop.categoryRows ?? [], offers };
   }
   async products(input: { category?: string; collection?: string; search?: string; giftable?: 'true'; page: number }) {
     const visible = await this.publicProductWhere();
@@ -112,14 +128,15 @@ export class StorefrontService {
     const where = { ...visible, variants: { some: {} }, ...(category && tree ? { categories: { some: { categoryId: { in: branchIds(tree, category.id) } } } } : {}), ...(input.collection === 'new-arrivals' ? { tags: { some: { tag: { slug: { in: ['new-arrival', 'new-arrivals'] } } } } } : input.collection ? { collections: { some: { collection: { slug: input.collection, ...activeCollection(new Date()) } } } } : {}), ...(input.search ? { name: { contains: input.search, mode: 'insensitive' as const } } : {}), ...(input.giftable ? { giftWrapEligible: true } : {}) };
     const orderBy = [{ createdAt: 'desc' as const }, { id: 'asc' as const }];
     const [total, rows] = await this.db.$transaction([this.db.product.count({ where }), this.db.product.findMany({ where, select: productSelect, orderBy, skip: (input.page - 1) * 24, take: 24 })]);
-    const items = rows.map(row => this.card(row));
+    const pricing = await this.priceRules();
+    const items = rows.map(row => this.card(row, pricing));
     return { items, total, page: input.page, pageSize: 24 };
   }
   async product(slug: string) {
     const visible = await this.publicProductWhere();
-    const row = await this.db.product.findFirst({ where: { ...visible, slug }, select: productSelect });
+    const row = await this.db.product.findFirst({ where: { ...visible, slug }, select: { ...productSelect, images: { orderBy: [{ position: 'asc' }, { id: 'asc' }], select: { url: true, altText: true } } } });
     if (!row) throw new NotFoundException('Product not found.');
-    return this.card(row);
+    return this.card(row, await this.priceRules());
   }
   async category(slug: string) {
     const tree = await categoryVisibility(this.db);

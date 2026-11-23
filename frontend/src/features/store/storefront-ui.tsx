@@ -18,7 +18,7 @@ export function ProductCard({product,shop=false}:{product:StoreProduct;shop?:boo
     <div className="store-product-copy">
       <p className="store-product-category">{product.categories[0]?.name??'The collection'}</p>
       <Link href={productHref(product)} className="store-product-name">{product.name}</Link>
-      <div className="store-price">{product.minPricePaise!==null?<>{product.minPricePaise!==product.maxPricePaise?'From ':''}{rupees(product.minPricePaise)}{product.maxPricePaise!==product.minPricePaise&&<span className="store-price-range"> – {rupees(product.maxPricePaise!)}</span>}{savingPaise > 0 && <del>{rupees(product.compareAtPricePaise!)}</del>}</>:<span>Price on request</span>}</div>
+      <div className="store-price">{product.minPricePaise!==null?<>{product.variantCount>1?'Starts from ':''}{rupees(product.minPricePaise)}{savingPaise > 0 && <del>{rupees(product.compareAtPricePaise!)}</del>}</>:<span>Price on request</span>}</div>
       {!product.available && <p className="store-product-unavailable">Sold out</p>}
       <Link className="store-product-view" href={productHref(product)}>View piece <ArrowRight size={15}/></Link>
     </div>
