@@ -43,8 +43,7 @@ test('gallery, variant stock, tabs, and logged-out review prompt work on desktop
   await page.getByRole('button', { name: 'Add to Cart' }).click();
   await expect(page.getByRole('status')).toContainText('Added to cart.');
   await expect(page.getByRole('link', { name: 'View Cart' })).toBeVisible();
-  await page.getByRole('button', { name: /Order Now/ }).click();
-  await expect(page.getByRole('status')).toContainText('Checkout coming soon for VASE-L.');
+  await expect(page.getByRole('link', { name: /Order Now/ })).toHaveAttribute('href', '/checkout?mode=direct&variantId=large&quantity=1');
   await page.getByRole('button', { name: /Rated 4.5 out of 5/ }).click();
   await expect(page.getByRole('tab', { name: 'Reviews (2)' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('Lovely vase')).toBeVisible();

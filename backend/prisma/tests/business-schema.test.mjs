@@ -27,6 +27,14 @@ async function reject(sql, code) {
   const before = (await db.query('SELECT id,"productId",sku,"pricePaise","stockQuantity","optionCombinationKey","createdAt","updatedAt" FROM "ProductVariant"')).rows;
   await db.query(migration('20261116010000_complete_business_schema'));
   await db.query(migration('20261118000000_admin_categories'));
+  await db.query(`INSERT INTO "Customer" (id,"updatedAt") VALUES ('customer',now());
+    INSERT INTO "CustomerAddress" (id,"customerId",recipient,phone,line1,city,state,"pinCode") VALUES
+    ('address-a','customer','Asha','9876543210','First Road','Pune','Maharashtra','411001'),
+    ('address-b','customer','Asha','9876543210','Second Road','Pune','Maharashtra','411001');`);
+  await db.query(migration('20261123064652_customer_address_defaults'));
+  const addressDefaults = (await db.query(`SELECT id,"isDefault",label FROM "CustomerAddress" ORDER BY id`)).rows;
+  assert.deepEqual(addressDefaults, [{ id: 'address-a', isDefault: true, label: null }, { id: 'address-b', isDefault: false, label: null }]);
+  await reject(`UPDATE "CustomerAddress" SET "isDefault"=true WHERE id='address-b'`, '23505');
   await db.query(`INSERT INTO "Category" (id,name,slug,"updatedAt") VALUES ('category','Existing category','existing-category',now())`);
   const category = (await db.query(`SELECT status,"deletedAt","imageUrl" FROM "Category" WHERE id='category'`)).rows[0];
   assert.equal(category.status, 'ACTIVE'); assert.equal(category.deletedAt, null); assert.equal(category.imageUrl, null);

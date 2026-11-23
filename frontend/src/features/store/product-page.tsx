@@ -8,7 +8,6 @@ import { ProductAboutSection } from './product-about-section';
 import { ProductReviewsSection } from './product-reviews-section';
 import { useCart } from '../cart/cart-provider';
 
-type PurchaseIntent = { productId: string; variantId: string; sku: string; quantity: number };
 type Tab = 'about' | 'reviews';
 const lowStock = (stock: number) => stock > 0 && stock <= 5;
 
@@ -68,10 +67,6 @@ export function ProductPage({ slug }: { slug: string }) {
     setTab('reviews');
     requestAnimationFrame(() => tabsRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' }));
   };
-  const preparePurchase = (variant: StoreVariant) => {
-    const intent: PurchaseIntent = { productId: product.id, variantId: variant.id, sku: variant.sku, quantity: 1 };
-    setNotice(`Checkout coming soon for ${intent.sku}.`);
-  };
   const addToCart = async (variant: StoreVariant) => { setAdding(true); setNotice(''); try { await cart.add(variant.id, 1); setNotice('Added to cart.'); } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Could not add this piece. Please try again.'); } finally { setAdding(false); } };
   const switchTab = (next: Tab) => { setTab(next); (next === 'about' ? aboutRef : reviewsRef).current?.focus(); };
   const reviewCount = reviews?.summary.reviewCount ?? 0;
@@ -86,7 +81,7 @@ export function ProductPage({ slug }: { slug: string }) {
         <div className="store-pdp-variants"><div className="store-pdp-label-row"><h2>{product.variants.length > 1 ? 'Select your piece' : 'Your piece'}</h2>{chosen && <span>SKU {chosen.sku}</span>}</div><div className="store-variant-options" role="group" aria-label="Variant prices">{product.variants.map(item => <button type="button" key={item.id} aria-label={`${item.sku}, ${rupees(item.effectivePricePaise)}${item.stockQuantity === 0 ? ', out of stock' : ''}`} aria-pressed={item.id === variantId} onClick={() => { setVariantId(item.id); setNotice(''); }}><span>{rupees(item.effectivePricePaise)}</span>{item.compareAtPricePaise && <del>{rupees(item.compareAtPricePaise)}</del>}{!item.available && <small>Out of stock</small>}</button>)}</div></div>
         {chosen && <div className="store-pdp-stock" data-stock={stock === 0 ? 'out' : lowStock(stock) ? 'low' : 'in'}><span aria-hidden="true"/>{stock === 0 ? 'Out of stock' : lowStock(stock) ? `Low stock · ${stock} left` : 'In stock'}</div>}
         {chosen && Array.isArray(chosen.attributes) && chosen.attributes.length > 0 && <div className="store-pdp-feature-preview">{chosen.attributes.filter(item => item.title && item.value).map((item, index) => <span key={`${item.title}-${index}`}><strong>{item.title}:</strong> {item.value}</span>)}</div>}
-        <div className="store-pdp-actions"><button type="button" className="store-pdp-button store-pdp-button-primary" disabled={!chosen || stock <= 0 || adding} onClick={() => { if (chosen) void addToCart(chosen); }}><ShoppingBag size={18}/> {adding ? 'Adding…' : 'Add to Cart'}</button><button type="button" className="store-pdp-button store-pdp-button-secondary" disabled={!chosen || stock <= 0} onClick={() => { if (chosen) preparePurchase(chosen); }}>Order Now <ArrowRight size={17}/></button></div>{notice && <p className="store-pdp-notice" role="status">{notice} {notice === 'Added to cart.' && <Link href="/cart">View Cart</Link>}</p>}
+        <div className="store-pdp-actions"><button type="button" className="store-pdp-button store-pdp-button-primary" disabled={!chosen || stock <= 0 || adding} onClick={() => { if (chosen) void addToCart(chosen); }}><ShoppingBag size={18}/> {adding ? 'Adding…' : 'Add to Cart'}</button>{chosen && stock > 0 ? <Link className="store-pdp-button store-pdp-button-secondary" href={`/checkout?mode=direct&variantId=${encodeURIComponent(chosen.id)}&quantity=1`}>Order Now <ArrowRight size={17}/></Link> : <button type="button" className="store-pdp-button store-pdp-button-secondary" disabled>Order Now <ArrowRight size={17}/></button>}</div>{notice && <p className="store-pdp-notice" role="status">{notice} {notice === 'Added to cart.' && <Link href="/cart">View Cart</Link>}</p>}
       </section>
     </div>
     <div className="store-pdp-tabs" ref={tabsRef}><div className="store-pdp-tablist" role="tablist" aria-label="Product details" onKeyDown={event => { if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); switchTab(tab === 'about' ? 'reviews' : 'about'); } }}><button type="button" role="tab" id="product-tab-about" ref={aboutRef} aria-controls="product-panel-about" aria-selected={tab === 'about'} tabIndex={tab === 'about' ? 0 : -1} onClick={() => setTab('about')}>About</button><button type="button" role="tab" id="product-tab-reviews" ref={reviewsRef} aria-controls="product-panel-reviews" aria-selected={tab === 'reviews'} tabIndex={tab === 'reviews' ? 0 : -1} onClick={() => setTab('reviews')}>Reviews ({reviewCount})</button></div><div role="tabpanel" id={`product-panel-${tab}`} aria-labelledby={`product-tab-${tab}`} tabIndex={0}>{tab === 'about' ? <ProductAboutSection product={product} variant={chosen}/> : <ProductReviewsSection slug={slug} reviews={reviews} loading={reviewsLoading} error={reviewError} onRefresh={() => void loadReviews()} onLoadMore={() => void loadReviews((reviews?.page ?? 1) + 1)}/>}</div></div>

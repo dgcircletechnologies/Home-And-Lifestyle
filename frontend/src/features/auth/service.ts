@@ -62,9 +62,14 @@ export const authService = {
   },
 };
 export function homeFor(user: User) { return user.role === 'ADMIN' ? '/admin' : '/account'; }
-export function safeReturn(value: string | null, user: User) {
-  if (user.role === 'ADMIN') return homeFor(user);
-  if (!value || !value.startsWith('/') || value.startsWith('//') || /[\\\r\n]/.test(value)) return homeFor(user);
-  if (/^\/(admin|login|register|activate|check-email|access-denied)(\/|\?|$)/.test(value)) return homeFor(user);
+export function safeCustomerReturn(value: string | null) {
+  if (!value || !value.startsWith('/') || value.startsWith('//') || /[\\\r\n]/.test(value)) return '/account';
+  if (/^\/(admin|login|register|activate|check-email|access-denied)(\/|\?|$)/.test(value)) return '/account';
   return value;
 }
+export function safeReturn(value: string | null, user: User) { return user.role === 'ADMIN' ? homeFor(user) : safeCustomerReturn(value); }
+const pendingKey = 'hl_post_auth_return';
+export function savePendingReturn(path: string) { if (typeof window !== 'undefined') window.localStorage.setItem(pendingKey, JSON.stringify({ path: safeCustomerReturn(path), expiresAt: Date.now() + 86400000 })); }
+export function pendingReturn() { if (typeof window === 'undefined') return null; try { const value = JSON.parse(window.localStorage.getItem(pendingKey) ?? 'null') as { path?: string; expiresAt?: number } | null; return value && typeof value.path === 'string' && typeof value.expiresAt === 'number' && value.expiresAt > Date.now() ? safeCustomerReturn(value.path) : null; } catch { return null; } }
+export function clearPendingReturn() { if (typeof window !== 'undefined') window.localStorage.removeItem(pendingKey); }
+export function pendingLoginHref() { const target = pendingReturn(); return target ? `/login?returnTo=${encodeURIComponent(target)}` : '/login'; }

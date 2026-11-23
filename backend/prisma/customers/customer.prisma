@@ -17,6 +17,8 @@ model Customer {
 model CustomerAddress {
   id          String   @id @default(uuid())
   customerId  String
+  label       String?
+  isDefault   Boolean  @default(false)
   recipient   String
   phone       String
   line1       String

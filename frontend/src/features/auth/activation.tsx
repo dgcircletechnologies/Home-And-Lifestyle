@@ -6,7 +6,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Button, FormField, StatusMessage } from '../../components/ui/auth-ui';
 import { ApiError } from '../../lib/api';
 import { AuthShell } from './auth-shell';
-import { authService } from './service';
+import { authService, pendingLoginHref } from './service';
+
+function useReturnLoginHref() { const [href, setHref] = useState('/login'); useEffect(() => { queueMicrotask(() => setHref(pendingLoginHref())); }, []); return href; }
 
 type VerificationContext = { email: string; delivery: 'accepted' | 'failed' | 'requested'; message: string; nextAvailableAt: number; createdAt: number };
 const contextKey = 'hl-verification-context';
@@ -24,6 +26,7 @@ function readVerificationContext(): VerificationContext | null {
   } catch { return null; }
 }
 export function CheckEmail() {
+  const loginHref = useReturnLoginHref();
   const [email, setEmail] = useState(''); const [delivery, setDelivery] = useState<'accepted' | 'failed' | 'requested' | 'direct'>('direct');
   const [message, setMessage] = useState('Enter your email address to request a verification link.');
   const [nextAvailableAt, setNextAvailableAt] = useState(0); const [seconds, setSeconds] = useState(0);
@@ -41,10 +44,11 @@ export function CheckEmail() {
     finally { lock.current = false; setBusy(false); }
   }
   const failed = delivery === 'failed';
-  return <div className="check-email-screen"><div className="check-email-wrap"><Link href="/" className="check-email-brand">Home &amp; Lifestyle</Link><section className="check-email-panel" aria-labelledby="check-email-title"><div className="check-email-icon"><MailCheck size={25} aria-hidden="true" /></div><h1 id="check-email-title">{failed ? 'We couldn’t send your verification email' : delivery === 'direct' ? 'Verify your email.' : 'Check your email.'}</h1><p className="check-email-intro">{failed ? 'Your account is ready to verify. Try sending the link again.' : delivery === 'direct' ? 'Request a verification link to activate your account.' : delivery === 'requested' ? 'If this account needs verification, a message will be sent when eligible.' : 'Our email service accepted your verification message. It may take a moment to arrive.'}</p><form onSubmit={resend} className="check-email-form"><FormField id="resend-email" label="Email address" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required maxLength={254} />{email && <p className="check-email-recipient">Sending to <strong>{email}</strong></p>}<div className={`check-email-status ${failed ? 'is-error' : ''}`} role="status" aria-live="polite">{message}</div><Button type="submit" busy={busy} disabled={seconds > 0} className="w-full">{busy ? 'Requesting…' : seconds > 0 ? `Resend available in ${seconds}s` : failed ? 'Retry sending email' : <><RefreshCw size={16} aria-hidden="true" />Resend verification email</>}</Button></form><p className="check-email-hint">Check your spam folder if the message takes a few minutes.</p><Link href="/login" className="check-email-back">Back to login</Link></section></div></div>;
+  return <div className="check-email-screen"><div className="check-email-wrap"><Link href="/" className="check-email-brand">Home &amp; Lifestyle</Link><section className="check-email-panel" aria-labelledby="check-email-title"><div className="check-email-icon"><MailCheck size={25} aria-hidden="true" /></div><h1 id="check-email-title">{failed ? 'We couldn’t send your verification email' : delivery === 'direct' ? 'Verify your email.' : 'Check your email.'}</h1><p className="check-email-intro">{failed ? 'Your account is ready to verify. Try sending the link again.' : delivery === 'direct' ? 'Request a verification link to activate your account.' : delivery === 'requested' ? 'If this account needs verification, a message will be sent when eligible.' : 'Our email service accepted your verification message. It may take a moment to arrive.'}</p><form onSubmit={resend} className="check-email-form"><FormField id="resend-email" label="Email address" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required maxLength={254} />{email && <p className="check-email-recipient">Sending to <strong>{email}</strong></p>}<div className={`check-email-status ${failed ? 'is-error' : ''}`} role="status" aria-live="polite">{message}</div><Button type="submit" busy={busy} disabled={seconds > 0} className="w-full">{busy ? 'Requesting…' : seconds > 0 ? `Resend available in ${seconds}s` : failed ? 'Retry sending email' : <><RefreshCw size={16} aria-hidden="true" />Resend verification email</>}</Button></form><p className="check-email-hint">Check your spam folder if the message takes a few minutes.</p><Link href={loginHref} className="check-email-back">Back to login</Link></section></div></div>;
 }
 
 export function Activation() {
+  const loginHref = useReturnLoginHref();
   const token = useRef<string | null>(null); const captured = useRef(false); const lock = useRef(false);
   const [state, setState] = useState<'loading' | 'ready' | 'busy' | 'success' | 'invalid' | 'network'>('loading'); const [error, setError] = useState('');
   useEffect(() => {
@@ -64,6 +68,6 @@ export function Activation() {
     {['ready', 'busy', 'network'].includes(state) && <div className="grid gap-5"><Button type="button" onClick={verify} busy={state === 'busy'} className="w-full">{state === 'busy' ? 'Verifying…' : 'Verify email'}</Button>{state === 'network' && <StatusMessage>{error}</StatusMessage>}</div>}
     {success && <StatusMessage tone="success" role="status">Your email has been verified. You can now sign in.</StatusMessage>}
     {state === 'invalid' && <StatusMessage>{error || 'This link is invalid, expired, or already used. Request a new email.'}</StatusMessage>}
-    <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm"><Link className="font-semibold text-[var(--hl-primary)]" href="/login">Sign in</Link>{!success && <Link className="font-semibold text-[var(--hl-primary)]" href="/check-email">Resend activation</Link>}</div>
+    <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm"><Link className="font-semibold text-[var(--hl-primary)]" href={loginHref}>Sign in</Link>{!success && <Link className="font-semibold text-[var(--hl-primary)]" href="/check-email">Resend activation</Link>}</div>
   </AuthShell>;
 }
