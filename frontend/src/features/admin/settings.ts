@@ -1,6 +1,6 @@
 import { api } from '../../lib/api';
 
-export type StoreDetails = { storeName: string; supportEmail: string | null; supportPhone: string | null; publicAddress: string | null; version: number; market: string; currency: string; language: string; timezone: string };
+export type StoreDetails = { storeName: string; supportEmail: string | null; supportPhone: string | null; publicAddress: string | null; businessHours: string | null; version: number; market: string; currency: string; language: string; timezone: string };
 export type ShippingPolicy = { version: number };
 export type GiftingSettings = { version: number; giftWrapDefaultEligible: boolean; giftMessagesAvailable: boolean; giftReceiptsAvailable: boolean; giftWrapFeePaise: number; enquiryRouting: string };
 export type PinEntry = { pinCode: string; supported: false; enabled: true; reason: string | null };
@@ -9,7 +9,7 @@ export type Page<T> = { items: T[]; total: number; page: number; pageSize: numbe
 const base = 'admin/settings';
 export const settingsService = {
   store: () => api<StoreDetails>(base + '/store'),
-  saveStore: (value: Pick<StoreDetails, 'version' | 'storeName' | 'supportEmail' | 'supportPhone' | 'publicAddress'>) =>
+  saveStore: (value: Pick<StoreDetails, 'version' | 'storeName' | 'supportEmail' | 'supportPhone' | 'publicAddress' | 'businessHours'>) =>
     api<StoreDetails>(base + '/store', { method: 'PATCH', body: value }),
   shipping: () => api<ShippingPolicy>(base + '/shipping'),
   gifting: () => api<GiftingSettings>(base + '/gifting'),

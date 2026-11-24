@@ -5,6 +5,7 @@ model StoreSettings {
   supportEmail             String?
   supportPhone             String?
   publicAddress            String?
+  businessHours            String?
   storeVersion             Int      @default(0)
   shippingVersion          Int      @default(0)
   giftingVersion           Int      @default(0)

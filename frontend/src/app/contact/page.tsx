@@ -1,0 +1,6 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { PolicyPageLayout, PolicySection } from '../../features/store/support/policy-layout';
+import { StoreContactDetails } from '../../features/store/support/store-contact-details';
+export const metadata: Metadata = { title: 'Contact & Support | Home & Lifestyle', description: 'Find live Home & Lifestyle support contact details and answers to common order questions.' };
+export default function Page() { return <PolicyPageLayout eyebrow="We’re here to help" title="Contact & Support" subtitle="A question about a piece, delivery or an order? Get in touch." updated={false}><PolicySection title="Reach us"><StoreContactDetails showHours /><p>For order questions, please include your order number so we can help faster.</p></PolicySection><PolicySection title="Helpful links"><nav aria-label="Support links" className="store-policy-link-grid"><Link href="/account/orders">My Orders <span aria-hidden="true">↗</span></Link><Link href="/faq">Frequently Asked Questions <span aria-hidden="true">↗</span></Link><Link href="/shipping-policy">Shipping &amp; Delivery Policy <span aria-hidden="true">↗</span></Link><Link href="/cancellation-and-returns">Cancellation &amp; Returns <span aria-hidden="true">↗</span></Link></nav></PolicySection></PolicyPageLayout>; }

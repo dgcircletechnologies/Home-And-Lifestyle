@@ -25,7 +25,7 @@ test('About is reachable from desktop and mobile navigation and shows live publi
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(page.locator('#main').getByRole('link', { name: 'hello@example.in' })).toHaveAttribute('href','mailto:hello@example.in');
   await expect(page.locator('#main').getByRole('link', { name: '+91 98765 43210' })).toHaveAttribute('href','tel:+919876543210');
-  await expect(page.getByText('Studio 4, Market Road')).toBeVisible();
+  await expect(page.locator('#main').getByText('Studio 4, Market Road')).toBeVisible();
   await expect.poll(() => page.locator('.store-about-hero-image img').evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440);
   const desktopSections = await page.locator('.store-about > section').evaluateAll(sections => sections.map(section => ({ width: section.getBoundingClientRect().width, left: section.getBoundingClientRect().left })));
@@ -35,8 +35,8 @@ test('About is reachable from desktop and mobile navigation and shows live publi
 
   address = 'Updated studio address\nPune, Maharashtra';
   await page.reload();
-  await expect(page.getByText('Updated studio address')).toBeVisible();
-  await expect(page.getByText('Studio 4, Market Road')).toHaveCount(0);
+  await expect(page.locator('#main').getByText('Updated studio address')).toBeVisible();
+  await expect(page.locator('#main').getByText('Studio 4, Market Road')).toHaveCount(0);
 
   for (const width of [390, 375, 360]) {
     await page.setViewportSize({ width, height: 844 });

@@ -4,15 +4,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { api } from '../../lib/api';
 import { useAuth } from '../auth/provider';
 
-export type GuestItem = { variantId: string; quantity: number };
-export type CartLine = { itemId: string | null; variantId: string; quantity: number; product: { id: string; slug: string; name: string; image: { url: string; altText: string | null } | null } | null; variant: { id: string; sku: string; pricePaise: number; stockQuantity: number; attributes: { title: string; value: string }[] } | null; unitPricePaise: number; effectiveUnitPricePaise: number; automaticDiscountPaise: number; couponDiscountPaise: number; lineTotalPaise: number; warning: string | null };
-export type CartSummary = { currency: 'INR'; items: CartLine[]; itemCount: number; subtotalPaise: number; automaticDiscountPaise: number; couponDiscountPaise: number; estimatedTotalPaise: number; coupon: { code: string; valid: boolean; message: string; savingsPaise: number } | null; canCheckout: boolean; note: string; notes?: string[] };
-type CartContextValue = { summary: CartSummary | null; loading: boolean; error: string; mergeNotes: string[]; count: number; couponCode: string; add: (variantId: string, quantity?: number) => Promise<void>; update: (line: CartLine, quantity: number) => Promise<void>; remove: (line: CartLine) => Promise<void>; applyCoupon: (code: string) => Promise<CartSummary>; clearCoupon: () => Promise<void>; refresh: () => Promise<void>; mergeGuestAfterLogin: () => Promise<void> };
+export type GuestItem = { variantId: string; quantity: number; giftWrapSelected?: boolean; giftMessage?: string | null };
+export type CartLine = { itemId: string | null; variantId: string; quantity: number; product: { id: string; slug: string; name: string; image: { url: string; altText: string | null } | null } | null; variant: { id: string; sku: string; pricePaise: number; stockQuantity: number; attributes: { title: string; value: string }[] } | null; unitPricePaise: number; effectiveUnitPricePaise: number; automaticDiscountPaise: number; couponDiscountPaise: number; lineTotalPaise: number; warning: string | null; isGiftWrapEligible: boolean; giftWrapPricePaise: number; allowGiftMessage: boolean; giftWrapSelected: boolean; giftMessage: string | null };
+export type CartSummary = { currency: 'INR'; items: CartLine[]; itemCount: number; subtotalPaise: number; automaticDiscountPaise: number; couponDiscountPaise: number; giftWrapTotalPaise: number; estimatedTotalPaise: number; coupon: { code: string; valid: boolean; message: string; savingsPaise: number } | null; canCheckout: boolean; note: string; notes?: string[] };
+type CartContextValue = { summary: CartSummary | null; loading: boolean; error: string; mergeNotes: string[]; count: number; couponCode: string; add: (variantId: string, quantity?: number) => Promise<void>; update: (line: CartLine, quantity: number) => Promise<void>; setGift: (line: CartLine, selected: boolean, message: string | null) => Promise<void>; flushGiftWrites: () => Promise<void>; remove: (line: CartLine) => Promise<void>; applyCoupon: (code: string) => Promise<CartSummary>; clearCoupon: () => Promise<void>; refresh: () => Promise<void>; mergeGuestAfterLogin: () => Promise<void> };
 const KEY = 'hl_guest_cart_v1';
 const COUPON_KEY = 'hl_cart_coupon_v1';
 const CartContext = createContext<CartContextValue | null>(null);
 const parseGuest = (raw: string): GuestItem[] => {
-  try { const value: unknown = JSON.parse(raw); return Array.isArray(value) ? value.filter((row): row is GuestItem => row && typeof row.variantId === 'string' && Number.isInteger(row.quantity) && row.quantity > 0 && row.quantity <= 1000000).slice(0, 100) : []; } catch { return []; }
+  try { const value: unknown = JSON.parse(raw); return Array.isArray(value) ? value.filter((row): row is GuestItem => row && typeof row.variantId === 'string' && Number.isInteger(row.quantity) && row.quantity > 0 && row.quantity <= 1000000).slice(0, 100).map(row => ({ variantId: row.variantId, quantity: row.quantity, ...(row.giftWrapSelected === true ? { giftWrapSelected: true, giftMessage: typeof row.giftMessage === 'string' ? row.giftMessage.trim().slice(0, 250) || null : null } : {}) })) : []; } catch { return []; }
 };
 const readGuest = () => parseGuest(localStorage.getItem(KEY) ?? '[]');
 const subscribeGuest = (callback: () => void) => { window.addEventListener('storage', callback); window.addEventListener('hl:cart', callback); return () => { window.removeEventListener('storage', callback); window.removeEventListener('hl:cart', callback); }; };
@@ -29,6 +29,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState('');
   const [mergeNotes, setMergeNotes] = useState<string[]>([]);
   const mergeLock = useRef<Promise<void> | null>(null);
+  const giftWrites = useRef(new Set<Promise<void>>());
   const ready = useRef(false);
   const account = auth.status === 'authenticated' && auth.user?.role === 'CUSTOMER';
   const activeIdentity = useRef('');
@@ -80,6 +81,31 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const nextItems = readGuest().map(item => item.variantId === line.variantId ? { ...item, quantity } : item);
     const next = await preview(nextItems, couponCode); saveGuest(nextItems); setSummary(next);
   };
+  const setGift = (line: CartLine, selected: boolean, message: string | null) => {
+    const previous = summary;
+    setSummary(current => {
+      if (!current) return current;
+      const items = current.items.map(item => item.variantId === line.variantId ? { ...item, giftWrapSelected: selected, giftMessage: selected ? message : null } : item);
+      const giftWrapTotalPaise = items.reduce((total, item) => total + (item.giftWrapSelected ? item.giftWrapPricePaise * item.quantity : 0), 0);
+      return { ...current, items, giftWrapTotalPaise, estimatedTotalPaise: current.estimatedTotalPaise - (current.giftWrapTotalPaise ?? 0) + giftWrapTotalPaise };
+    });
+    const task = (async () => {
+    if (!line.isGiftWrapEligible) throw Error('Gift wrapping is unavailable for this piece.');
+    const giftMessage = selected && line.allowGiftMessage ? message?.trim().slice(0, 250) || null : null;
+    if (account) {
+      if (!line.itemId) throw Error('Cart item could not be updated.');
+      const next = await api<CartSummary>(`cart/items/${line.itemId}/gift`, { method: 'PATCH', body: { giftWrapSelected: selected, giftMessage } });
+      setSummary(couponCode ? await api<CartSummary>(`cart?couponCode=${encodeURIComponent(couponCode)}`) : next);
+      return;
+    }
+    const nextItems = readGuest().map(item => item.variantId === line.variantId ? { ...item, giftWrapSelected: selected, giftMessage } : item);
+    const next = await preview(nextItems, couponCode); saveGuest(nextItems); setSummary(next);
+    })().catch(reason => { setSummary(previous); throw reason; });
+    giftWrites.current.add(task);
+    void task.finally(() => giftWrites.current.delete(task)).catch(() => undefined);
+    return task;
+  };
+  const flushGiftWrites = async () => { while (giftWrites.current.size) await Promise.all([...giftWrites.current]); };
   const remove = async (line: CartLine) => {
     if (account) { if (!line.itemId) throw Error('Cart item could not be removed.'); const next = await api<CartSummary>(`cart/items/${line.itemId}`, { method: 'DELETE' }); setSummary(couponCode ? await api<CartSummary>(`cart?couponCode=${encodeURIComponent(couponCode)}`) : next); return; }
     const nextItems = readGuest().filter(item => item.variantId !== line.variantId);
@@ -91,6 +117,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setSummary(next); if (next.coupon?.valid) { setCouponCode(normalized); window.sessionStorage.setItem(COUPON_KEY, normalized); } return next;
   };
   const clearCoupon = async () => { setCouponCode(''); window.sessionStorage.removeItem(COUPON_KEY); const next = account ? await api<CartSummary>('cart') : await preview(readGuest()); setSummary(next); };
-  return <CartContext.Provider value={{ summary, loading, error, mergeNotes, count: summary?.itemCount ?? guestItems.reduce((sum, item) => sum + item.quantity, 0), couponCode, add, update, remove, applyCoupon, clearCoupon, refresh, mergeGuestAfterLogin }}>{children}</CartContext.Provider>;
+  return <CartContext.Provider value={{ summary, loading, error, mergeNotes, count: summary?.itemCount ?? guestItems.reduce((sum, item) => sum + item.quantity, 0), couponCode, add, update, setGift, flushGiftWrites, remove, applyCoupon, clearCoupon, refresh, mergeGuestAfterLogin }}>{children}</CartContext.Provider>;
 }
 export function useCart() { const value = useContext(CartContext); if (!value) throw Error('useCart must be used inside CartProvider.'); return value; }

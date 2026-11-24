@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../auth/provider';
 import { addressesApi, addressLines, type Address, type AddressInput } from '../addresses/addresses-api';
@@ -10,6 +10,7 @@ import { useCart, type CartSummary } from '../cart/cart-provider';
 import { rupees } from '../store/catalog';
 import { StorePhoto } from '../store/storefront-ui';
 import { StoreCTA } from '../store/store-cta';
+import { GiftOptionsControl } from '../store/gift-options-control';
 import { ordersApi } from '../orders/orders-api';
 import { openPayment } from '../orders/razorpay-checkout';
 
@@ -31,6 +32,7 @@ export function CheckoutPage() {
   const requestedQuantity = params.get('quantity') ?? '1';
   const checkoutUrl = `/checkout${query ? `?${query}` : ''}`;
   const [summary, setSummary] = useState<CartSummary | null>(null);
+  const giftDrafts = useRef<Record<string, string>>({});
   const [summaryError, setSummaryError] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -82,6 +84,25 @@ export function CheckoutPage() {
     return () => { live = false; };
   }, [customer, auth.user?.id, mode, query, requestedVariantId, requestedQuantity, appliedCouponCode, mergeGuestAfterLogin]);
 
+  const changeGift = async (variantId: string, selected: boolean, message: string | null) => {
+    if (!summary) return;
+    const current = summary;
+    const items = current.items.map(item => item.variantId === variantId ? { ...item, giftWrapSelected: selected, giftMessage: selected ? message : null } : item);
+    const giftWrapTotalPaise = items.reduce((total, item) => total + (item.giftWrapSelected ? item.giftWrapPricePaise * item.quantity : 0), 0);
+    setSummary({ ...current, items, giftWrapTotalPaise, estimatedTotalPaise: current.estimatedTotalPaise - (current.giftWrapTotalPaise ?? 0) + giftWrapTotalPaise });
+    setSummaryError('');
+    try {
+      let next: CartSummary;
+      if (mode === 'direct') next = await api<CartSummary>('cart/preview', { method: 'POST', body: { items: items.map(item => ({ variantId: item.variantId, quantity: item.quantity, giftWrapSelected: item.giftWrapSelected, giftMessage: item.giftMessage })) } });
+      else {
+        const line = current.items.find(item => item.variantId === variantId)!;
+        await cart.setGift(line, selected, message);
+        const code = current.coupon?.valid ? current.coupon.code : null;
+        next = await api<CartSummary>(`cart${code ? `?couponCode=${encodeURIComponent(code)}` : ''}`);
+      }
+      setSummary(next);
+    } catch (reason) { setSummary(current); setSummaryError(reason instanceof Error ? reason.message : 'Gift options could not be updated.'); }
+  };
   const saveAddress = async (input: AddressInput) => {
     const created = await addressesApi.create(input);
     setAddresses(current => [...current.map(row => created.isDefault ? { ...row, isDefault: false } : row), created].sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.id.localeCompare(b.id)));
@@ -96,7 +117,9 @@ export function CheckoutPage() {
     if (paymentBusy || !summary?.canCheckout || !checkoutDraft.shippingAddressId || !checkoutDraft.billingAddressId) return;
     setPaymentBusy(true); setPaymentError('');
     try {
-      const launch = await ordersApi.checkout(mode === 'direct' ? { mode: 'DIRECT', shippingAddressId, billingAddressId: selectedBillingAddressId, variantId: requestedVariantId, quantity: Number(requestedQuantity) } : { mode: 'CART', shippingAddressId, billingAddressId: selectedBillingAddressId, ...(checkoutDraft.couponCode ? { couponCode: checkoutDraft.couponCode } : {}) });
+      await cart.flushGiftWrites();
+      const selectedGift = (variantId: string, selected: boolean, saved: string | null) => selected ? (giftDrafts.current[variantId]?.trim().slice(0, 250) || saved || null) : null;
+      const launch = await ordersApi.checkout(mode === 'direct' ? { mode: 'DIRECT', shippingAddressId, billingAddressId: selectedBillingAddressId, variantId: requestedVariantId, quantity: Number(requestedQuantity), giftWrapSelected: summary.items[0]?.giftWrapSelected ?? false, giftMessage: selectedGift(requestedVariantId, summary.items[0]?.giftWrapSelected ?? false, summary.items[0]?.giftMessage ?? null) } : { mode: 'CART', shippingAddressId, billingAddressId: selectedBillingAddressId, ...(checkoutDraft.couponCode ? { couponCode: checkoutDraft.couponCode } : {}), giftOptions: summary.items.filter(item => item.isGiftWrapEligible).map(item => ({ variantId: item.variantId, giftWrapSelected: item.giftWrapSelected, giftMessage: selectedGift(item.variantId, item.giftWrapSelected, item.giftMessage) })) });
       setLaunchedOrderId(launch.orderId);
       await openPayment(launch, id => router.push(`/checkout/result?orderId=${encodeURIComponent(id)}`), mode === 'cart' ? cart.refresh : undefined);
     } catch (error) { setPaymentError(error instanceof ApiError && ['RAZORPAY_NOT_CONFIGURED', 'RAZORPAY_CONFIG_INVALID'].includes(error.code) ? 'Online payment is temporarily unavailable. Please try again later.' : error instanceof Error ? error.message : 'Payment could not be started.'); }
@@ -116,5 +139,5 @@ export function CheckoutPage() {
       {addingFor === 'shipping' && <AddressForm title="New shipping address" onSave={saveAddress} onCancel={() => setAddingFor(null)}/>}
       <section className="store-checkout-billing"><h2>Billing address</h2><label><input type="checkbox" checked={sameBilling} onChange={event => setSameBilling(event.target.checked)}/> Billing address same as shipping address</label></section>
       {!sameBilling && <><AddressPicker title="Choose billing address" addresses={addresses} selected={billingAddressId} onSelect={setBillingAddressId} onAdd={() => setAddingFor('billing')} name="billing-address"/>{addingFor === 'billing' && <AddressForm title="New billing address" onSave={saveAddress} onCancel={() => setAddingFor(null)}/>}</>}
-    </div><aside className="store-checkout-summary" aria-label="Order summary"><div className="store-checkout-summary-head"><p className="store-kicker">Your pieces</p><h2>Order summary</h2>{mode === 'cart' && <Link href="/cart">Edit items or coupons →</Link>}</div><div className="store-checkout-lines">{summary.items.map(item => <div key={item.variantId} className="store-checkout-line"><div className="store-checkout-line-photo"><StorePhoto url={item.product?.image?.url} alt={item.product?.image?.altText || item.product?.name || 'Selected piece'}/></div><div><strong>{item.product?.name}</strong><small>SKU {item.variant?.sku} · Qty {item.quantity}</small>{Array.isArray(item.variant?.attributes) && item.variant.attributes.length > 0 && <small>{item.variant.attributes.filter(row => row.title && row.value).map(row => `${row.title}: ${row.value}`).join(' · ')}</small>}<span>{rupees(item.effectiveUnitPricePaise)}{item.effectiveUnitPricePaise < item.unitPricePaise && <del>{rupees(item.unitPricePaise)}</del>} × {item.quantity}</span></div><b>{rupees(item.effectiveUnitPricePaise * item.quantity)}</b></div>)}</div><div className="store-checkout-breakdown"><div><span>Subtotal</span><strong>{rupees(summary.subtotalPaise)}</strong></div>{summary.automaticDiscountPaise > 0 && <div className="store-cart-saving"><span>Product savings</span><strong>−{rupees(summary.automaticDiscountPaise)}</strong></div>}{mode === 'cart' && summary.coupon?.valid && summary.couponDiscountPaise > 0 && <div className="store-cart-saving"><span>Coupon · {summary.coupon.code}</span><strong>−{rupees(summary.couponDiscountPaise)}</strong></div>}<div><span>Shipping</span><span>Shipping included in cost</span></div><div className="store-checkout-total"><span>Total</span><strong>{rupees(summary.estimatedTotalPaise)}</strong></div></div><StoreCTA disabled={paymentBusy || !checkoutDraft.shippingAddressId || !checkoutDraft.billingAddressId || !summary.canCheckout} onClick={() => void proceed()} className="store-checkout-payment">{paymentBusy ? 'Opening payment…' : 'Proceed to Payment'}</StoreCTA><p className="store-checkout-helper">{!checkoutDraft.shippingAddressId || !checkoutDraft.billingAddressId ? 'Choose shipping and billing addresses to continue.' : 'Secure online payment via Razorpay.'}</p>{paymentError && <p className="store-form-error" role="alert">{paymentError}{launchedOrderId && <> <Link href={`/account/orders/${launchedOrderId}`}>View this order</Link></>}</p>}<p className="store-checkout-estimate">Prices and stock are checked again when payment begins.</p></aside></div></div>;
+    </div><aside className="store-checkout-summary" aria-label="Order summary"><div className="store-checkout-summary-head"><p className="store-kicker">Your pieces</p><h2>Order summary</h2>{mode === 'cart' && <Link href="/cart">Edit items or coupons →</Link>}</div><div className="store-checkout-lines">{summary.items.map(item => <div key={item.variantId} className="store-checkout-line"><div className="store-checkout-line-photo"><StorePhoto url={item.product?.image?.url} alt={item.product?.image?.altText || item.product?.name || 'Selected piece'}/></div><div><strong>{item.product?.name}</strong><small>SKU {item.variant?.sku} · Qty {item.quantity}</small>{Array.isArray(item.variant?.attributes) && item.variant.attributes.length > 0 && <small>{item.variant.attributes.filter(row => row.title && row.value).map(row => `${row.title}: ${row.value}`).join(' · ')}</small>}<span>{rupees(item.effectiveUnitPricePaise)}{item.effectiveUnitPricePaise < item.unitPricePaise && <del>{rupees(item.unitPricePaise)}</del>} × {item.quantity}</span></div><b>{rupees(item.effectiveUnitPricePaise * item.quantity)}</b>{item.isGiftWrapEligible && <div className="col-span-full"><GiftOptionsControl name={`checkout-${item.variantId}`} selected={item.giftWrapSelected} message={item.giftMessage} pricePaise={item.giftWrapPricePaise} quantity={item.quantity} allowMessage={item.allowGiftMessage} disabled={paymentBusy} onChange={(selected, message) => void changeGift(item.variantId, selected, message)} onDraftChange={draft => { giftDrafts.current[item.variantId] = draft; }}/></div>}</div>)}</div><div className="store-checkout-breakdown"><div><span>Subtotal</span><strong>{rupees(summary.subtotalPaise)}</strong></div>{summary.automaticDiscountPaise > 0 && <div className="store-cart-saving"><span>Product savings</span><strong>−{rupees(summary.automaticDiscountPaise)}</strong></div>}{mode === 'cart' && summary.coupon?.valid && summary.couponDiscountPaise > 0 && <div className="store-cart-saving"><span>Coupon · {summary.coupon.code}</span><strong>−{rupees(summary.couponDiscountPaise)}</strong></div>}<div><span>Shipping</span><span>Shipping included in cost</span></div>{summary.items.some(item => item.giftWrapSelected) && <div><span>Gift Wrapping</span><strong className="tabular-nums">{rupees(summary.giftWrapTotalPaise)}</strong></div>}<div className="store-checkout-total"><span>Total</span><strong>{rupees(summary.estimatedTotalPaise)}</strong></div></div><StoreCTA disabled={paymentBusy || !checkoutDraft.shippingAddressId || !checkoutDraft.billingAddressId || !summary.canCheckout} onClick={() => void proceed()} className="store-checkout-payment">{paymentBusy ? 'Opening payment…' : 'Proceed to Payment'}</StoreCTA><p className="store-checkout-helper">{!checkoutDraft.shippingAddressId || !checkoutDraft.billingAddressId ? 'Choose shipping and billing addresses to continue.' : 'Secure online payment via Razorpay.'}</p>{summaryError && <p className="store-form-error" role="alert">{summaryError}</p>}{paymentError && <p className="store-form-error" role="alert">{paymentError}{launchedOrderId && <> <Link href={`/account/orders/${launchedOrderId}`}>View this order</Link></>}</p>}<p className="store-checkout-estimate">Prices and stock are checked again when payment begins.</p></aside></div></div>;
 }

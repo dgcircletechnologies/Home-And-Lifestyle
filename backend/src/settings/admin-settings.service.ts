@@ -24,15 +24,15 @@ export class AdminSettingsService {
   private async config() {
     return this.db.storeSettings.upsert({ where: { id: 'store' }, create: { id: 'store', storeName: process.env.STORE_NAME?.trim() || 'Home & Lifestyle' }, update: {} });
   }
-  async store() { const c = await this.config(); return { storeName: c.storeName, supportEmail: c.supportEmail, supportPhone: c.supportPhone, publicAddress: c.publicAddress, version: c.storeVersion, market: 'India', currency: 'INR', language: 'English', timezone: 'Asia/Kolkata' }; }
-  async publicConfig() { const c = await this.config(); return { storeName: c.storeName, supportEmail: c.supportEmail, supportPhone: c.supportPhone, publicAddress: c.publicAddress, market: 'India', currency: 'INR', language: 'English', timezone: 'Asia/Kolkata', gifting: { giftMessagesAvailable: c.giftMessagesAvailable, giftReceiptsAvailable: c.giftReceiptsAvailable, giftWrapFeePaise: c.giftWrapFeePaise } }; }
-  async updateStore(input: { version: number; storeName: string; supportEmail: string | null; supportPhone: string | null; publicAddress: string | null }) {
+  async store() { const c = await this.config(); return { storeName: c.storeName, supportEmail: c.supportEmail, supportPhone: c.supportPhone, publicAddress: c.publicAddress, businessHours: c.businessHours, version: c.storeVersion, market: 'India', currency: 'INR', language: 'English', timezone: 'Asia/Kolkata' }; }
+  async publicConfig() { const c = await this.config(); return { storeName: c.storeName, supportEmail: c.supportEmail, supportPhone: c.supportPhone, publicAddress: c.publicAddress, businessHours: c.businessHours, market: 'India', currency: 'INR', language: 'English', timezone: 'Asia/Kolkata', gifting: { giftMessagesAvailable: c.giftMessagesAvailable, giftReceiptsAvailable: c.giftReceiptsAvailable, giftWrapFeePaise: c.giftWrapFeePaise } }; }
+  async updateStore(input: { version: number; storeName: string; supportEmail: string | null; supportPhone: string | null; publicAddress: string | null; businessHours: string | null }) {
     await this.config();
     return this.db.$transaction(async tx => {
-      const result = await tx.storeSettings.updateMany({ where: { id: 'store', storeVersion: input.version }, data: { storeName: input.storeName, supportEmail: input.supportEmail, supportPhone: input.supportPhone, publicAddress: input.publicAddress, storeVersion: { increment: 1 } } });
+      const result = await tx.storeSettings.updateMany({ where: { id: 'store', storeVersion: input.version }, data: { storeName: input.storeName, supportEmail: input.supportEmail, supportPhone: input.supportPhone, publicAddress: input.publicAddress, businessHours: input.businessHours, storeVersion: { increment: 1 } } });
       if (!result.count) throw stale();
       const c = await tx.storeSettings.findUniqueOrThrow({ where: { id: 'store' } });
-      return { storeName: c.storeName, supportEmail: c.supportEmail, supportPhone: c.supportPhone, publicAddress: c.publicAddress, version: c.storeVersion, market: 'India', currency: 'INR', language: 'English', timezone: 'Asia/Kolkata' };
+      return { storeName: c.storeName, supportEmail: c.supportEmail, supportPhone: c.supportPhone, publicAddress: c.publicAddress, businessHours: c.businessHours, version: c.storeVersion, market: 'India', currency: 'INR', language: 'English', timezone: 'Asia/Kolkata' };
     });
   }
   async gifting() { const c = await this.config(); return { giftWrapDefaultEligible: c.giftWrapDefaultEligible, giftMessagesAvailable: c.giftMessagesAvailable, giftReceiptsAvailable: c.giftReceiptsAvailable, giftWrapFeePaise: c.giftWrapFeePaise, version: c.giftingVersion, enquiryRouting: 'not configured' }; }

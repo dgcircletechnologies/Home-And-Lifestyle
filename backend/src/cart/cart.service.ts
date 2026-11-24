@@ -3,8 +3,9 @@ import type { Prisma } from '../../generated/prisma/client';
 import { categoryVisibility } from '../categories/category-visibility';
 import { PrismaService } from '../prisma.service';
 import { activeAutomaticPromotionWhere } from '../promotions/public-promotion';
+import { giftSelection, type GiftSelection } from './gift-options';
 
-type InputItem = { variantId: string; quantity: number; itemId?: string };
+type InputItem = { variantId: string; quantity: number; itemId?: string; giftWrapSelected?: boolean; giftMessage?: string | null };
 type Transaction = Prisma.TransactionClient;
 const error = (message: string) => new BadRequestException({ code: 'CART_INVALID', message });
 const saving = (rule: { kind: string; amountPaise: number | null; percentBasisPoints: number | null }, price: number) => Math.min(price, rule.kind === 'FIXED' ? rule.amountPaise ?? 0 : Math.floor((price * (rule.percentBasisPoints ?? 0) + 5000) / 10000));
@@ -32,10 +33,28 @@ export class CartService {
     const user = await this.db.user.findUnique({ where: { id: userId }, select: { customerId: true } });
     if (!user?.customerId) return { items: [] as InputItem[], customerId: null };
     const cart = await this.db.cart.findFirst({ where: { customerId: user.customerId }, orderBy: { createdAt: 'asc' }, include: { lines: { orderBy: { id: 'asc' } } } });
-    return { items: cart?.lines.map(line => ({ itemId: line.id, variantId: line.variantId, quantity: line.quantity })) ?? [], customerId: user.customerId };
+    return { items: cart?.lines.map(line => ({ itemId: line.id, variantId: line.variantId, quantity: line.quantity, ...giftSelection(line.giftOptions) })) ?? [], customerId: user.customerId };
   }
 
-  async get(userId: string, couponCode?: string) { const account = await this.accountItems(userId); return this.preview(account.items, couponCode, account.customerId); }
+  async get(userId: string, couponCode?: string, selections?: { variantId: string; giftWrapSelected: boolean; giftMessage: string | null }[]) {
+    const account = await this.accountItems(userId);
+    if (selections && (new Set(selections.map(row => row.variantId)).size !== selections.length || selections.some(row => !account.items.some(item => item.variantId === row.variantId)))) throw error('Gift options do not match the current cart.');
+    const overrides = new Map(selections?.map(row => [row.variantId, row]));
+    return this.preview(account.items.map(item => ({ ...item, ...overrides.get(item.variantId) })), couponCode, account.customerId);
+  }
+
+  async setGift(userId: string, itemId: string, selection: GiftSelection) {
+    await this.db.$transaction(async tx => {
+      const { cartId } = await this.accountCart(tx, userId, false);
+      const line = cartId ? await tx.cartLine.findFirst({ where: { id: itemId, cartId }, include: { variant: { include: { product: true } } } }) : null;
+      if (!line) throw new NotFoundException('Cart item not found.');
+      if (selection.giftWrapSelected && !line.variant.product.giftWrapEligible) throw error('Gift wrapping is unavailable for this piece.');
+      const settings = await tx.storeSettings.findUnique({ where: { id: 'store' } });
+      if (selection.giftMessage && (!selection.giftWrapSelected || !settings?.giftMessagesAvailable)) throw error('Gift messages are unavailable for this piece.');
+      await tx.cartLine.update({ where: { id: itemId }, data: { giftOptions: selection.giftWrapSelected ? { giftWrapSelected: true, giftMessage: selection.giftMessage } : { giftWrapSelected: false, giftMessage: null } } });
+    });
+    return this.get(userId);
+  }
 
   async add(userId: string, input: InputItem) {
     const [variant, tree] = await Promise.all([this.db.productVariant.findUnique({ where: { id: input.variantId }, include: { product: { include: { categories: true } } } }), categoryVisibility(this.db)]);
@@ -78,7 +97,9 @@ export class CartService {
     await this.db.$transaction(async tx => {
       const { cartId } = await this.accountCart(tx, userId, true);
       const grouped = new Map<string, number>();
-      for (const item of items) grouped.set(item.variantId, (grouped.get(item.variantId) ?? 0) + item.quantity);
+      const guestGift = new Map<string, GiftSelection>();
+      for (const item of items) { grouped.set(item.variantId, (grouped.get(item.variantId) ?? 0) + item.quantity); if (item.giftWrapSelected) guestGift.set(item.variantId, giftSelection(item)); }
+      const settings = await tx.storeSettings.findUnique({ where: { id: 'store' } });
       const variants = await tx.productVariant.findMany({ where: { id: { in: [...grouped.keys()] } }, include: { product: { include: { categories: true } } } });
       const tree = await categoryVisibility(this.db);
       const known = new Map(variants.map(variant => [variant.id, variant]));
@@ -89,8 +110,10 @@ export class CartService {
         const current = lines.reduce((sum, line) => sum + line.quantity, 0);
         const next = Math.min(variant.stockQuantity, current + quantity);
         if (next < current + quantity) notes.push(`${variant.sku} was capped at ${variant.stockQuantity} available.`);
-        if (lines[0]) { await tx.cartLine.update({ where: { id: lines[0].id }, data: { quantity: next } }); if (lines.length > 1) await tx.cartLine.deleteMany({ where: { id: { in: lines.slice(1).map(line => line.id) } } }); }
-        else await tx.cartLine.create({ data: { cartId: cartId!, variantId, quantity: next } });
+        const selected = guestGift.get(variantId);
+        const giftOptions = selected && variant.product.giftWrapEligible ? { giftWrapSelected: true, giftMessage: settings?.giftMessagesAvailable ? selected.giftMessage : null } : undefined;
+        if (lines[0]) { await tx.cartLine.update({ where: { id: lines[0].id }, data: { quantity: next, ...(giftOptions && !giftSelection(lines[0].giftOptions).giftWrapSelected ? { giftOptions } : {}) } }); if (lines.length > 1) await tx.cartLine.deleteMany({ where: { id: { in: lines.slice(1).map(line => line.id) } } }); }
+        else await tx.cartLine.create({ data: { cartId: cartId!, variantId, quantity: next, giftOptions } });
       }
     });
     return { ...await this.get(userId), notes };
@@ -99,10 +122,11 @@ export class CartService {
   async preview(items: InputItem[], couponCode?: string, customerId?: string | null) {
     const ids = [...new Set(items.map(item => item.variantId))];
     const now = new Date();
-    const [variants, promotions, tree] = await Promise.all([
+    const [variants, promotions, tree, settings] = await Promise.all([
       this.db.productVariant.findMany({ where: { id: { in: ids } }, include: { product: { include: { images: { orderBy: [{ position: 'asc' }, { id: 'asc' }], take: 1 }, categories: true, collections: true } }, images: { orderBy: [{ position: 'asc' }, { id: 'asc' }], take: 1 } } }),
       this.db.promotion.findMany({ where: activeAutomaticPromotionWhere(now) }),
       categoryVisibility(this.db),
+      this.db.storeSettings.findUnique({ where: { id: 'store' }, select: { giftWrapFeePaise: true, giftMessagesAvailable: true } }),
     ]);
     const byId = new Map(variants.map(variant => [variant.id, variant]));
     const parents = new Map(tree.categories.map(category => [category.id, category.parentId]));
@@ -115,7 +139,10 @@ export class CartService {
       const stock = variant?.stockQuantity ?? 0;
       const warning = !published ? 'This piece is no longer available. Remove it from your cart.' : stock <= 0 ? 'Out of stock. Remove this item.' : item.quantity > stock ? `Only ${stock} available. Adjust the quantity.` : null;
       const unitPricePaise = published ? variant!.pricePaise : 0;
-      return { itemId: item.itemId ?? null, variantId: item.variantId, quantity: item.quantity, product: published ? { id: variant!.product.id, slug: variant!.product.slug, name: variant!.product.name, image: variant!.images[0] ?? variant!.product.images[0] ?? null } : null, variant: published ? { id: variant!.id, sku: variant!.sku, pricePaise: variant!.pricePaise, stockQuantity: stock, attributes: variant!.attributes ?? [] } : null, unitPricePaise, effectiveUnitPricePaise: unitPricePaise - discount, automaticDiscountPaise: discount * item.quantity, couponDiscountPaise: 0, lineTotalPaise: (unitPricePaise - discount) * item.quantity, warning, eligible: published, categoryIds: categories, collectionIds: variant?.product.collections.map(link => link.collectionId) ?? [] };
+      const isGiftWrapEligible = published && variant!.product.giftWrapEligible;
+      const gift = giftSelection(item);
+      const giftWrapSelected = Boolean(isGiftWrapEligible && gift.giftWrapSelected);
+      return { itemId: item.itemId ?? null, variantId: item.variantId, quantity: item.quantity, product: published ? { id: variant!.product.id, slug: variant!.product.slug, name: variant!.product.name, image: variant!.images[0] ?? variant!.product.images[0] ?? null } : null, variant: published ? { id: variant!.id, sku: variant!.sku, pricePaise: variant!.pricePaise, stockQuantity: stock, attributes: variant!.attributes ?? [] } : null, unitPricePaise, effectiveUnitPricePaise: unitPricePaise - discount, automaticDiscountPaise: discount * item.quantity, couponDiscountPaise: 0, lineTotalPaise: (unitPricePaise - discount) * item.quantity, warning, eligible: published, categoryIds: categories, collectionIds: variant?.product.collections.map(link => link.collectionId) ?? [], isGiftWrapEligible, giftWrapPricePaise: isGiftWrapEligible ? settings?.giftWrapFeePaise ?? 0 : 0, allowGiftMessage: Boolean(isGiftWrapEligible && settings?.giftMessagesAvailable), giftWrapSelected, giftMessage: giftWrapSelected && settings?.giftMessagesAvailable ? gift.giftMessage : null };
     });
     const subtotalPaise = rows.reduce((sum, row) => sum + row.unitPricePaise * row.quantity, 0);
     let coupon: { code: string; valid: boolean; message: string; savingsPaise: number } | null = null;
@@ -150,6 +177,7 @@ export class CartService {
     }
     const automaticDiscountPaise = rows.reduce((sum, row) => sum + row.automaticDiscountPaise, 0);
     const couponDiscountPaise = rows.reduce((sum, row) => sum + row.couponDiscountPaise, 0);
-    return { currency: 'INR', items: rows.map(row => ({ itemId: row.itemId, variantId: row.variantId, quantity: row.quantity, product: row.product, variant: row.variant, unitPricePaise: row.unitPricePaise, effectiveUnitPricePaise: row.effectiveUnitPricePaise, automaticDiscountPaise: row.automaticDiscountPaise, couponDiscountPaise: row.couponDiscountPaise, lineTotalPaise: row.lineTotalPaise, warning: row.warning })), itemCount: rows.reduce((sum, row) => sum + row.quantity, 0), subtotalPaise, automaticDiscountPaise, couponDiscountPaise, estimatedTotalPaise: subtotalPaise - automaticDiscountPaise - couponDiscountPaise, coupon, canCheckout: rows.length > 0 && rows.every(row => !row.warning), note: 'Merchandise estimate only. Shipping and taxes are calculated at checkout; stock and offers are rechecked then.' };
+    const giftWrapTotalPaise = rows.reduce((sum, row) => sum + (row.giftWrapSelected ? row.giftWrapPricePaise * row.quantity : 0), 0);
+    return { currency: 'INR', items: rows.map(row => ({ itemId: row.itemId, variantId: row.variantId, quantity: row.quantity, product: row.product, variant: row.variant, unitPricePaise: row.unitPricePaise, effectiveUnitPricePaise: row.effectiveUnitPricePaise, automaticDiscountPaise: row.automaticDiscountPaise, couponDiscountPaise: row.couponDiscountPaise, lineTotalPaise: row.lineTotalPaise, warning: row.warning, isGiftWrapEligible: row.isGiftWrapEligible, giftWrapPricePaise: row.giftWrapPricePaise, allowGiftMessage: row.allowGiftMessage, giftWrapSelected: row.giftWrapSelected, giftMessage: row.giftMessage })), itemCount: rows.reduce((sum, row) => sum + row.quantity, 0), subtotalPaise, automaticDiscountPaise, couponDiscountPaise, giftWrapTotalPaise, estimatedTotalPaise: subtotalPaise - automaticDiscountPaise - couponDiscountPaise + giftWrapTotalPaise, coupon, canCheckout: rows.length > 0 && rows.every(row => !row.warning), note: 'Prices and stock are rechecked at checkout.' };
   }
 }

@@ -590,3 +590,62 @@ small, [role=alert] { color: #a12f26; }
 .store-order-page :is(button,a):focus-visible { outline:3px solid var(--store-plum); outline-offset:3px; }
 @media (max-width:850px) { .store-order-layout { grid-template-columns:1fr; }.store-order-summary { position:static; }.store-order-page { width:min(100% - 32px,1320px); padding:30px 0 75px; } }
 @media (max-width:600px) { .store-orders-card-head,.store-orders-card-foot { align-items:flex-start; flex-direction:column; }.store-orders-card { padding:22px 18px; }.store-orders-card-foot>div:last-child { width:100%; }.store-orders-card-foot .store-flow-cta { flex:1; }.store-order-addresses { grid-template-columns:1fr; gap:0; }.store-order-line { grid-template-columns:62px minmax(0,1fr); }.store-order-line b { grid-column:2; }.store-payment-banner { padding:25px 21px; } }
+
+/* Public policy and support pages. */
+.public-shell footer.store-footer { grid-template-columns:minmax(220px,2fr) repeat(3,minmax(145px,1fr)); gap:clamp(24px,3vw,54px); }
+.store-footer nav { display:grid; align-content:start; gap:12px; min-width:0; }
+.store-footer address { max-width:300px; color:#c9bfc3; font-size:.84rem; font-style:normal; line-height:1.55; white-space:pre-line; }
+.public-shell .store-footer a { width:fit-content; max-width:100%; overflow-wrap:anywhere; transition:color .18s ease,text-decoration-color .18s ease; }
+.public-shell .store-footer a:hover { color:#fff; text-decoration:underline; text-underline-offset:4px; }
+.public-shell .store-footer a:focus-visible { outline:2px solid #f6dd77; outline-offset:5px; border-radius:2px; }
+.store-policy-page { width:min(100% - 40px,860px); margin:0 auto; padding:clamp(40px,6vw,88px) 0 clamp(80px,9vw,140px); }
+.store-policy-header { max-width:760px; padding-bottom:clamp(34px,5vw,60px); border-bottom:1px solid var(--store-line); }
+.public-shell .store-policy-back { display:inline-block; margin-bottom:42px; color:var(--store-plum); font-size:.82rem; font-weight:750; text-decoration:none; }
+.store-policy-header h1 { margin:12px 0 18px; font:400 clamp(2.5rem,6vw,5.2rem)/1.06 Georgia,serif; letter-spacing:-.055em; }
+.store-policy-subtitle { max-width:630px; color:#615851; font-size:clamp(1.06rem,2vw,1.3rem); line-height:1.55; }
+.store-policy-updated { margin-top:23px; color:#726962; font-size:.75rem; letter-spacing:.02em; }
+.store-policy-body { max-width:740px; }
+.store-policy-section { padding:35px 0; border-bottom:1px solid var(--store-line); }
+.store-policy-section h2,.store-policy-questions h2 { margin:0 0 17px; font:400 clamp(1.6rem,3vw,2.15rem)/1.18 Georgia,serif; letter-spacing:-.035em; }
+.store-policy-section p,.store-policy-section li,.store-policy-questions p { margin:0 0 13px; color:#5d554f; font-size:.96rem; line-height:1.75; }
+.store-policy-section p:last-child { margin-bottom:0; }
+.store-policy-section ul { padding-left:22px; }
+.store-policy-questions { display:grid; justify-items:start; gap:12px; margin-top:44px; padding:clamp(24px,4vw,42px); background:#eee5e8; border-radius:4px; }
+.store-policy-questions h2 { margin:0; }
+.store-policy-questions p { margin:0; }
+.store-policy-questions .store-home-cta,.store-policy-questions .store-flow-cta { margin-top:10px; }
+.store-contact-details { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:26px 35px; margin:0 0 22px; }
+.store-contact-details.is-compact { gap:12px 28px; margin:0; }
+.store-contact-details h3 { margin:0 0 6px; color:#786b72; font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.12em; }
+.store-contact-details p,.store-contact-details address,.store-contact-details a { margin:0; color:var(--store-ink); font-size:.9rem; font-style:normal; line-height:1.6; overflow-wrap:anywhere; white-space:pre-line; }
+.public-shell .store-contact-details a { color:var(--store-plum); text-decoration:underline; text-underline-offset:3px; }
+.store-policy-link-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.public-shell .store-policy-link-grid a { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:54px; padding:13px 16px; border:1px solid var(--store-line); color:var(--store-ink); background:var(--store-paper); font-size:.86rem; font-weight:700; text-decoration:none; }
+.public-shell .store-policy-link-grid a:hover { border-color:var(--store-plum); color:var(--store-plum); }
+.store-faq-list { border-top:1px solid var(--store-line); }
+.store-faq-list details { border-bottom:1px solid var(--store-line); }
+.store-faq-list summary { display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:56px; padding:15px 4px; color:var(--store-ink); font-size:.95rem; font-weight:700; cursor:pointer; list-style:none; }
+.store-faq-list summary::-webkit-details-marker { display:none; }
+.store-faq-list summary span { color:var(--store-plum); font-size:1.5rem; font-weight:400; transition:transform .18s ease; }
+.store-faq-list details[open] summary span { transform:rotate(45deg); }
+.store-faq-list details p { padding:0 30px 20px 4px; }
+.store-policy-page a:focus-visible,.store-faq-list summary:focus-visible { outline:3px solid var(--store-plum); outline-offset:4px; }
+@media (max-width:800px) { .public-shell footer.store-footer { grid-template-columns:repeat(2,minmax(0,1fr)); } .store-footer-intro { grid-column:1/-1; } }
+@media (max-width:480px) { .public-shell footer.store-footer { gap:30px 20px; padding:42px 20px 24px; } .store-footer nav { gap:10px; } .store-policy-page { width:calc(100% - 36px); } .store-policy-header h1 { overflow-wrap:break-word; } .store-contact-details,.store-policy-link-grid { grid-template-columns:1fr; } }
+@media (prefers-reduced-motion:reduce) { .store-faq-list summary span,.public-shell .store-footer a { transition:none; } }
+.public-shell #main:has(.store-policy-page) { display:block; width:100%; min-height:60svh; padding:0; }
+.public-shell .store-footer nav { display:grid; align-content:start; gap:12px; }
+.public-shell .store-policy-link-grid { display:grid; gap:10px; }
+.public-shell .store-policy-section { width:100%; max-width:none; }
+.store-gift-options { margin-top:16px; padding:16px 0 2px; border-top:1px solid var(--store-line); }
+.store-gift-options .store-kicker { margin:0 0 10px; font-size:.66rem; }
+.public-shell .store-gift-toggle { display:flex; align-items:center; gap:10px; min-height:44px; color:var(--store-ink); font-size:.82rem; font-weight:700; cursor:pointer; }
+.store-gift-toggle input { width:18px!important; height:18px; padding:0!important; margin:0; accent-color:var(--store-plum); flex:none; }
+.store-gift-message { margin-top:12px; }
+.store-gift-message label { display:block; margin:0 0 7px!important; font-size:.76rem; font-weight:750; }
+.store-gift-message label span { color:#716861; font-weight:400; }
+.store-gift-message textarea { display:block; width:100%; min-height:86px; padding:11px 12px; border:1px solid var(--store-line); border-radius:5px; background:var(--store-paper); color:var(--store-ink); font:inherit; font-size:.83rem; resize:vertical; }
+.store-gift-message small { display:block; margin-top:5px; color:#766d66; font-size:.68rem; text-align:right; }
+.store-gift-options :is(input,textarea):focus-visible { outline:3px solid var(--store-plum); outline-offset:3px; }
+.store-gift-callout { margin-top:12px; padding:12px 14px; border-left:3px solid var(--store-plum); background:#f4edf1; font-size:.8rem; }
+.store-gift-callout p { margin:5px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; }

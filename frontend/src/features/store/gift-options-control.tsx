@@ -1,0 +1,8 @@
+'use client';
+import { useState } from 'react';
+import { rupees } from './catalog';
+
+export function GiftOptionsControl({ name, selected, message, pricePaise, quantity, allowMessage, disabled, onChange, onDraftChange }: { name: string; selected: boolean; message: string | null; pricePaise: number; quantity: number; allowMessage: boolean; disabled?: boolean; onChange: (selected: boolean, message: string | null) => void; onDraftChange?: (message: string) => void }) {
+  const [draft, setDraft] = useState(message ?? '');
+  return <div className="store-gift-options"><p className="store-kicker">Gift options</p><label className="store-gift-toggle"><input type="checkbox" checked={selected} disabled={disabled} onChange={event => { if (!event.target.checked) { setDraft(''); onDraftChange?.(''); } onChange(event.target.checked, event.target.checked ? draft.trim() || null : null); }}/><span>Add gift wrapping <span className="tabular-nums">({pricePaise === 0 ? 'Free' : `+${rupees(pricePaise)}${quantity > 1 ? ' each' : ''}`})</span></span></label>{selected && allowMessage && <div className="store-gift-message"><label htmlFor={`gift-message-${name}`}>Custom Gift Message <span>(optional)</span></label><textarea id={`gift-message-${name}`} maxLength={250} rows={3} value={draft} onChange={event => { setDraft(event.target.value); onDraftChange?.(event.target.value); }} onBlur={() => { if (draft.trim() !== (message ?? '')) onChange(true, draft.trim() || null); }} placeholder="Add a personal note for the recipient (optional)" disabled={disabled}/><small className="tabular-nums">{draft.length}/250</small></div>}</div>;
+}
