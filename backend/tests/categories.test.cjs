@@ -40,5 +40,5 @@ test('the initial unfiltered category list accepts all statuses and optional ima
   const db = { category: { count: async () => 1, findMany: async () => [row] }, productCategory: { groupBy: async () => [] }, $transaction: async operations => Promise.all(operations) };
   const service = new AdminCategoriesService(db, {});
   const result = await service.list({ page: 1, pageSize: 20, status: 'all', sort: 'name' });
-  assert.deepEqual(result, { items: [{ ...row, navVisibility: 'Not selected', image: null, imageUrl: undefined, imagePublicId: undefined, imageFormat: undefined, imageWidth: undefined, imageHeight: undefined, imageResourceType: undefined }], page: 1, pageSize: 20, total: 1 });
+  assert.deepEqual(result, { items: [{ ...row, navVisibility: 'Not selected', image: null, secondaryImage: null, imageUrl: undefined, imagePublicId: undefined, imageFormat: undefined, imageWidth: undefined, imageHeight: undefined, imageResourceType: undefined }], page: 1, pageSize: 20, total: 1 });
 });

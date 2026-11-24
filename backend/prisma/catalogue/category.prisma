@@ -18,6 +18,8 @@ model Category {
   storefrontNavPosition Int?
   imageUrl    String?
   imagePublicId String?
+  secondaryImageUrl String?
+  secondaryImagePublicId String?
   imageFormat String?
   imageWidth  Int?
   imageHeight Int?

@@ -3,7 +3,7 @@ import type { PrismaService } from '../prisma.service';
 /** Shared eligibility rules for the public category directory and admin navbar preview. */
 export async function categoryVisibility(db: PrismaService) {
   const [categories, assignments] = await Promise.all([
-    db.category.findMany({ where: { deletedAt: null }, select: { id: true, name: true, slug: true, parentId: true, status: true, imageUrl: true, showInStorefrontNav: true, storefrontNavPosition: true }, orderBy: [{ name: 'asc' }, { id: 'asc' }] }),
+    db.category.findMany({ where: { deletedAt: null }, select: { id: true, name: true, slug: true, parentId: true, status: true, imageUrl: true, secondaryImageUrl: true, showInStorefrontNav: true, storefrontNavPosition: true }, orderBy: [{ name: 'asc' }, { id: 'asc' }] }),
     db.productCategory.groupBy({ by: ['categoryId'], where: { product: { status: 'PUBLISHED', variants: { some: {} } } }, _count: { productId: true } }),
   ]);
   const byId = new Map(categories.map(category => [category.id, category]));

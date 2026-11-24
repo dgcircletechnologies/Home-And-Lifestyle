@@ -37,15 +37,19 @@ model Order {
 model OrderStatusHistory {
   id             String   @id @default(uuid())
   orderId        String
-  adminId        String
-  previousStatus String
+  adminId        String?
+  previousStatus String?
   status         String
   action         String
   reason         String?
+  paymentStatus  PaymentStatus?
+  actorType      String   @default("ADMIN")
+  note           String?
+  internalNote   String?
   resumedFrom    String?
   createdAt      DateTime @default(now())
-  order          Order     @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  admin          User      @relation(fields: [adminId], references: [id], onDelete: Restrict)
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  admin          User?     @relation(fields: [adminId], references: [id], onDelete: SetNull)
 
   @@index([orderId, createdAt])
 }

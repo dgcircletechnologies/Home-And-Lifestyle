@@ -7,7 +7,7 @@ import { activeAutomaticPromotionWhere } from '../promotions/public-promotion';
 
 const activeCollection = (now: Date): Prisma.CollectionWhereInput => ({ AND: [{ OR: [{ startsAt: null }, { startsAt: { lte: now } }] }, { OR: [{ endsAt: null }, { endsAt: { gt: now } }] }] });
 const productSelect = {
-  id: true, name: true, slug: true, description: true, story: true, materials: true, dimensions: true, careInstructions: true, isFeatured: true, giftWrapEligible: true, createdAt: true,
+  id: true, name: true, slug: true, description: true, story: true, materials: true, dimensions: true, careInstructions: true, isFeatured: true, giftWrapEligible: true, videoUrl: true, showInHomeVideoShowcase: true, createdAt: true,
   attributes: { select: { key: true, textValue: true, numericValue: true, unit: true } },
   tags: { select: { tag: { select: { name: true } } } },
   collections: { select: { collection: { select: { name: true } } } },
@@ -38,7 +38,7 @@ export class StorefrontService {
     }).sort((a, b) => a.effectivePricePaise - b.effectivePricePaise || a.id.localeCompare(b.id));
     const cheapest = variants[0];
     return { id: row.id, name: row.name, slug: row.slug, description: row.description, story: row.story, isFeatured: row.isFeatured, giftWrapEligible: row.giftWrapEligible,
-      image: row.images[0] ?? null, images: row.images, minPricePaise: cheapest?.effectivePricePaise ?? null, maxPricePaise: variants.at(-1)?.effectivePricePaise ?? null,
+      image: row.images[0] ?? null, primaryImage: row.images[0] ?? null, secondaryImage: row.images[1] ?? null, images: row.images, videoUrl: row.videoUrl, minPricePaise: cheapest?.effectivePricePaise ?? null, maxPricePaise: variants.at(-1)?.effectivePricePaise ?? null,
       compareAtPricePaise: cheapest?.compareAtPricePaise ?? null, variantCount: variants.length,
       available: row.variants.some((variant: { stockQuantity: number }) => variant.stockQuantity > 0),
       variants, materials: row.materials, dimensions: row.dimensions, careInstructions: row.careInstructions,
@@ -51,7 +51,7 @@ export class StorefrontService {
     const selected = tree.categories.filter(category => !category.parentId && category.showInStorefrontNav && tree.hasProducts(category.id)).sort((a,b) => (a.storefrontNavPosition ?? 999999) - (b.storefrontNavPosition ?? 999999) || a.name.localeCompare(b.name));
     const ids = new Set<string>();
     for (const root of selected) for (const id of branchIds(tree, root.id)) if (tree.hasProducts(id)) ids.add(id);
-    return [...selected, ...tree.categories.filter(category => ids.has(category.id) && category.parentId)].map(category => ({ id: category.id, name: category.name, slug: category.slug, parentId: category.parentId, image: category.imageUrl ? { url: category.imageUrl, altText: category.name } : null }));
+    return [...selected, ...tree.categories.filter(category => ids.has(category.id) && category.parentId)].map(category => ({ id: category.id, name: category.name, slug: category.slug, parentId: category.parentId, image: category.imageUrl ? { url: category.imageUrl, altText: category.name } : null, primaryImage: category.imageUrl ? { url: category.imageUrl, altText: category.name } : null, secondaryImage: category.secondaryImageUrl ? { url: category.secondaryImageUrl, altText: category.name } : null }));
   }
   async directory() {
     const tree = await categoryVisibility(this.db);
@@ -68,7 +68,7 @@ export class StorefrontService {
     roots.forEach(visit);
     const photos = await this.db.productCategory.findMany({ where: { categoryId: { in: eligible.map(item => item.id) }, product: { status: 'PUBLISHED', images: { some: {} } } }, distinct: ['categoryId'], select: { categoryId: true, product: { select: { images: { orderBy: { position: 'asc' }, take: 1, select: { url: true, altText: true } } } } } });
     const photoByCategory = new Map(photos.map(link => [link.categoryId, link.product.images[0]]));
-    return ordered.map(category => ({ id: category.id, name: category.name, slug: category.slug, parentId: category.parentId, image: category.imageUrl ? { url: category.imageUrl, altText: category.name } : photoByCategory.get(category.id) ?? null }));
+    return ordered.map(category => ({ id: category.id, name: category.name, slug: category.slug, parentId: category.parentId, image: category.imageUrl ? { url: category.imageUrl, altText: category.name } : photoByCategory.get(category.id) ?? null, primaryImage: category.imageUrl ? { url: category.imageUrl, altText: category.name } : photoByCategory.get(category.id) ?? null, secondaryImage: category.secondaryImageUrl ? { url: category.secondaryImageUrl, altText: category.name } : null }));
   }
   async menu() {
     const visible = await this.publicProductWhere();
@@ -108,7 +108,7 @@ export class StorefrontService {
   async home() {
     const now = new Date();
     const visible = await this.publicProductWhere();
-    const [categories, featured, latest, giftable, collections, shop, offers, pricing] = await Promise.all([
+    const [categories, featured, latest, giftable, collections, shop, offers, pricing, videoProducts] = await Promise.all([
       this.directory(),
       this.db.product.findMany({ where: { ...visible, isFeatured: true, variants: { some: {} } }, select: productSelect, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 8 }),
       this.db.product.findMany({ where: { ...visible, variants: { some: {} } }, select: productSelect, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 8 }),
@@ -117,8 +117,9 @@ export class StorefrontService {
       this.shopService.list({ sort: 'newest', page: 1, pageSize: 20, includeCategoryRows: true }),
       this.offers(now),
       this.priceRules(),
+      this.db.product.findMany({ where: { ...visible, showInHomeVideoShowcase: true, videoUrl: { not: null }, variants: { some: {} } }, select: productSelect, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 8 }),
     ]);
-    return { categories, featured: featured.map(row => this.card(row, pricing)), latest: latest.map(row => this.card(row, pricing)), giftable: giftable.map(row => this.card(row, pricing)), collections: collections.map(row => ({ name: row.name, slug: row.slug, description: row.description, products: row.products.map(link => this.card(link.product, pricing)) })), categoryRows: shop.categoryRows ?? [], offers };
+    return { categories, videoProducts: videoProducts.filter(row => row.videoUrl?.trim()).map(row => this.card(row, pricing)), featured: featured.map(row => this.card(row, pricing)), latest: latest.map(row => this.card(row, pricing)), giftable: giftable.map(row => this.card(row, pricing)), collections: collections.map(row => ({ name: row.name, slug: row.slug, description: row.description, products: row.products.map(link => this.card(link.product, pricing)) })), categoryRows: shop.categoryRows ?? [], offers };
   }
   async products(input: { category?: string; collection?: string; search?: string; giftable?: 'true'; page: number }) {
     const visible = await this.publicProductWhere();
@@ -142,9 +143,9 @@ export class StorefrontService {
     const tree = await categoryVisibility(this.db);
     const match = tree.categories.find(item => item.slug === slug);
     if (!match || !tree.isActive(match.id)) throw new NotFoundException('Category not found.');
-    const category = await this.db.category.findFirst({ where: { slug, status: 'ACTIVE', deletedAt: null }, select: { name: true, slug: true, description: true, imageUrl: true } });
+    const category = await this.db.category.findFirst({ where: { slug, status: 'ACTIVE', deletedAt: null }, select: { name: true, slug: true, description: true, imageUrl: true, secondaryImageUrl: true } });
     if (!category) throw new NotFoundException('Category not found.');
-    return category;
+    return { ...category, primaryImage: category.imageUrl ? { url: category.imageUrl, altText: category.name } : null, secondaryImage: category.secondaryImageUrl ? { url: category.secondaryImageUrl, altText: category.name } : null };
   }
   async collection(slug: string) {
     const visible = await this.publicProductWhere();

@@ -43,7 +43,10 @@ export class CustomerPaymentsService {
       if (!order || !current) throw new NotFoundException('Payment attempt not found.');
       if (current.status === 'SUCCEEDED' || order.status === 'NEW') return { orderId: order.id, status: 'PAID' };
       if (order.status === 'PAYMENT_EXCEPTION') return { orderId: order.id, status: 'EXCEPTION' };
-      if (current.status !== 'FAILED') await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: 'FAILED', failureCode: code.slice(0, 100), failureReason: reason.slice(0, 500) } });
+      if (current.status !== 'FAILED') {
+        await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: 'FAILED', failureCode: code.slice(0, 100), failureReason: reason.slice(0, 500) } });
+        await tx.orderStatusHistory.create({ data: { orderId: order.id, previousStatus: order.status, status: order.status, action: 'payment_failed', paymentStatus: 'FAILED', actorType: 'SYSTEM', note: 'Payment was not completed. You can try again.', internalNote: `${code.slice(0, 100)}: ${reason.slice(0, 500)}` } });
+      }
       return { orderId: order.id, status: 'FAILED' };
     });
   }
@@ -60,7 +63,7 @@ export class CustomerPaymentsService {
           const extra = { status: 'SUCCEEDED' as const, providerPaymentId: paymentId, providerSignature: signature, paidAt: new Date(), failureCode: 'DUPLICATE_CAPTURE', failureReason: 'An additional payment was captured for this order. Manual reconciliation required.' };
           if (current.status === 'SUCCEEDED') await tx.paymentAttempt.create({ data: { ...extra, orderId: order.id, provider: current.provider, providerAccount: current.providerAccount, providerOrderId: current.providerOrderId, idempotencyKey: randomUUID(), amountPaise: current.amountPaise, currency: current.currency } });
           else await tx.paymentAttempt.update({ where: { id: attempt.id }, data: extra });
-          if (order.status === 'NEW') await tx.order.update({ where: { id: order.id }, data: { status: 'PAYMENT_EXCEPTION' } });
+          if (order.status === 'NEW') { await tx.order.update({ where: { id: order.id }, data: { status: 'PAYMENT_EXCEPTION' } }); await tx.orderStatusHistory.create({ data: { orderId: order.id, previousStatus: 'NEW', status: 'PAYMENT_EXCEPTION', action: 'duplicate_capture', paymentStatus: 'SUCCEEDED', actorType: 'SYSTEM', note: 'This order needs payment review.', internalNote: 'A distinct second payment was captured.' } }); }
           return { orderId: order.id, status: 'EXCEPTION', replayed: false };
         }
         if (order.payments.some(row => row.status === 'SUCCEEDED' && row.providerPaymentId !== paymentId)) throw new ConflictException('This order was already paid by another payment. Manual reconciliation is required.');
@@ -77,6 +80,7 @@ export class CustomerPaymentsService {
         }
         await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: 'SUCCEEDED', providerPaymentId: paymentId, providerSignature: signature, paidAt: new Date(), failureCode: null, failureReason: null } });
         await tx.order.update({ where: { id: order.id }, data: { status: 'NEW' } });
+        await tx.orderStatusHistory.create({ data: { orderId: order.id, previousStatus: order.status, status: 'NEW', action: 'payment_captured', paymentStatus: 'SUCCEEDED', actorType: 'SYSTEM', note: 'Payment confirmed.' } });
         if (order.sourceMode === 'CART' && order.customerId) {
           const account = await tx.user.findUnique({ where: { customerId: order.customerId }, select: { id: true } });
           if (account) await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext(${account.id}), 146223)`;
@@ -99,7 +103,10 @@ export class CustomerPaymentsService {
         if (!order) throw new NotFoundException('Order not found.');
         if (order.status === 'NEW') return { orderId: order.id, status: 'PAID', replayed: true };
         await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: 'SUCCEEDED', providerPaymentId: paymentId, providerSignature: signature, paidAt: new Date(), failureCode: 'STOCK_UNAVAILABLE', failureReason: 'Payment captured but stock was unavailable. Manual resolution required.' } });
-        await tx.order.update({ where: { id: order.id }, data: { status: 'PAYMENT_EXCEPTION' } });
+        if (order.status !== 'PAYMENT_EXCEPTION') {
+          await tx.order.update({ where: { id: order.id }, data: { status: 'PAYMENT_EXCEPTION' } });
+          await tx.orderStatusHistory.create({ data: { orderId: order.id, previousStatus: order.status, status: 'PAYMENT_EXCEPTION', action: 'stock_exception', paymentStatus: 'SUCCEEDED', actorType: 'SYSTEM', note: 'This order needs payment review.', internalNote: 'Captured payment could not be allocated to stock.' } });
+        }
         return { orderId: order.id, status: 'EXCEPTION', replayed: false };
       });
     }

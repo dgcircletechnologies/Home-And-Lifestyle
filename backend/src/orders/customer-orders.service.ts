@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { CartService } from '../cart/cart.service';
 import { PrismaService } from '../prisma.service';
 import { RazorpayClient } from '../payments/razorpay-client';
+import { customerHistory } from './status-history';
 
 type CheckoutInput = { mode: 'CART' | 'DIRECT'; shippingAddressId: string; billingAddressId: string; couponCode?: string; variantId?: string; quantity?: number };
 const address = (row: { recipient: string; phone: string; line1: string; line2: string | null; city: string; state: string; pinCode: string; countryCode: string; label: string | null }) => ({ recipient: row.recipient, phone: row.phone, line1: row.line1, line2: row.line2, city: row.city, state: row.state, pinCode: row.pinCode, countryCode: row.countryCode, label: row.label });
@@ -10,7 +11,7 @@ const invalid = (message: string) => new BadRequestException({ code: 'CHECKOUT_I
 const validPin = (pinCode: unknown): pinCode is string => typeof pinCode === 'string' && /^[1-9][0-9]{5}$/.test(pinCode);
 const deliveryUnavailable = () => invalid('Delivery is unavailable for the selected shipping PIN. Choose another address.');
 const paymentStatus = (order: { status: string; payments: { status: string }[] }) => order.status === 'PAYMENT_EXCEPTION' ? 'EXCEPTION' : order.payments.some(row => ['SUCCEEDED', 'PARTIALLY_REFUNDED', 'REFUNDED'].includes(row.status)) ? 'PAID' : order.payments[0]?.status ?? 'PENDING';
-const orderInclude = { lines: { orderBy: { id: 'asc' as const } }, payments: { orderBy: [{ createdAt: 'desc' as const }, { id: 'desc' as const }] } };
+const orderInclude = { lines: { orderBy: { id: 'asc' as const } }, payments: { orderBy: [{ createdAt: 'desc' as const }, { id: 'desc' as const }] }, statusHistory: { include: { admin: { select: { name: true, email: true } } }, orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }] } };
 
 @Injectable()
 export class CustomerOrdersService {
@@ -26,7 +27,7 @@ export class CustomerOrdersService {
     if (!row) return null;
     const automaticDiscountPaise = row.lines.reduce((sum, line) => sum + Number((line.discountsSnapshot as Record<string, unknown> | null)?.automaticPaise ?? 0), 0);
     const couponDiscountPaise = row.lines.reduce((sum, line) => sum + Number((line.discountsSnapshot as Record<string, unknown> | null)?.couponPaise ?? 0), 0);
-    return { id: row.id, orderNumber: row.orderNumber, createdAt: row.createdAt, status: row.status, paymentStatus: paymentStatus(row), currency: row.currency, sourceMode: row.sourceMode, subtotalPaise: row.subtotalPaise, discountPaise: row.discountPaise, automaticDiscountPaise, couponDiscountPaise, shippingPaise: row.shippingPaise, totalPaise: row.totalPaise, couponCode: row.couponCodeSnapshot, shippingAddress: row.deliveryAddress, billingAddress: row.billingAddress, lines: row.lines.map(line => ({ id: line.id, productName: line.productName, sku: line.sku, quantity: line.quantity, unitPricePaise: line.unitPricePaise, effectiveUnitPricePaise: Number((line.discountsSnapshot as Record<string, unknown> | null)?.effectiveUnitPricePaise ?? line.unitPricePaise - Math.floor(line.discountPaise / Math.max(line.quantity, 1))), discountPaise: line.discountPaise, totalPaise: line.totalPaise, attributes: (line.optionsSnapshot as Record<string, unknown> | null)?.attributes ?? [], image: (line.optionsSnapshot as Record<string, unknown> | null)?.image ?? null })), payments: row.payments.map(attempt => ({ id: attempt.id, status: attempt.status, providerPaymentId: attempt.providerPaymentId, failureCode: attempt.failureCode, failureReason: attempt.failureReason, paidAt: attempt.paidAt })) };
+    return { id: row.id, orderNumber: row.orderNumber, createdAt: row.createdAt, status: row.status, statusHistory: customerHistory(row, row.statusHistory), paymentStatus: paymentStatus(row), currency: row.currency, sourceMode: row.sourceMode, subtotalPaise: row.subtotalPaise, discountPaise: row.discountPaise, automaticDiscountPaise, couponDiscountPaise, shippingPaise: row.shippingPaise, totalPaise: row.totalPaise, couponCode: row.couponCodeSnapshot, shippingAddress: row.deliveryAddress, billingAddress: row.billingAddress, lines: row.lines.map(line => ({ id: line.id, productName: line.productName, sku: line.sku, quantity: line.quantity, unitPricePaise: line.unitPricePaise, effectiveUnitPricePaise: Number((line.discountsSnapshot as Record<string, unknown> | null)?.effectiveUnitPricePaise ?? line.unitPricePaise - Math.floor(line.discountPaise / Math.max(line.quantity, 1))), discountPaise: line.discountPaise, totalPaise: line.totalPaise, attributes: (line.optionsSnapshot as Record<string, unknown> | null)?.attributes ?? [], image: (line.optionsSnapshot as Record<string, unknown> | null)?.image ?? null })), payments: row.payments.map(attempt => ({ id: attempt.id, status: attempt.status, providerPaymentId: attempt.providerPaymentId, failureCode: attempt.failureCode, failureReason: attempt.failureReason, paidAt: attempt.paidAt })) };
   }
 
   async list(userId: string) {
@@ -81,16 +82,21 @@ export class CustomerOrdersService {
       if (!validPin(liveShipping.pinCode)) throw invalid('Enter a valid 6-digit Indian shipping PIN code.');
       const liveCoverage = await tx.pinCodeServiceability.findUnique({ where: { pinCode: liveShipping.pinCode } });
       if (liveCoverage?.enabled && !liveCoverage.supported) throw deliveryUnavailable();
-      return tx.order.create({ data: { id, orderNumber, checkoutKey: randomUUID(), customerId: owner.customerId, email: owner.email, phone: shipping.phone, currency: 'INR', deliveryAddress: address(liveShipping), billingAddress: address(liveBilling), sourceMode: input.mode, couponCodeSnapshot: quote.coupon?.valid ? quote.coupon.code : null, status: 'PENDING_PAYMENT', subtotalPaise: quote.subtotalPaise, discountPaise: quote.automaticDiscountPaise + quote.couponDiscountPaise, shippingPaise: 0, giftFeePaise: 0, totalPaise: quote.estimatedTotalPaise, lines: { create: quote.items.map(line => ({ productIdSnapshot: line.product!.id, variantIdSnapshot: line.variantId, variantId: line.variantId, productName: line.product!.name, variantName: line.variant!.sku, sku: line.variant!.sku, quantity: line.quantity, unitPricePaise: line.unitPricePaise, discountPaise: line.automaticDiscountPaise + line.couponDiscountPaise, totalPaise: line.lineTotalPaise, discountsSnapshot: { effectiveUnitPricePaise: line.effectiveUnitPricePaise, automaticPaise: line.automaticDiscountPaise, couponPaise: line.couponDiscountPaise }, optionsSnapshot: { attributes: line.variant!.attributes, image: line.product!.image, cartLineId: input.mode === 'CART' ? line.itemId : null } })) } } });
+      const created = await tx.order.create({ data: { id, orderNumber, checkoutKey: randomUUID(), customerId: owner.customerId, email: owner.email, phone: shipping.phone, currency: 'INR', deliveryAddress: address(liveShipping), billingAddress: address(liveBilling), sourceMode: input.mode, couponCodeSnapshot: quote.coupon?.valid ? quote.coupon.code : null, status: 'PENDING_PAYMENT', subtotalPaise: quote.subtotalPaise, discountPaise: quote.automaticDiscountPaise + quote.couponDiscountPaise, shippingPaise: 0, giftFeePaise: 0, totalPaise: quote.estimatedTotalPaise, lines: { create: quote.items.map(line => ({ productIdSnapshot: line.product!.id, variantIdSnapshot: line.variantId, variantId: line.variantId, productName: line.product!.name, variantName: line.variant!.sku, sku: line.variant!.sku, quantity: line.quantity, unitPricePaise: line.unitPricePaise, discountPaise: line.automaticDiscountPaise + line.couponDiscountPaise, totalPaise: line.lineTotalPaise, discountsSnapshot: { effectiveUnitPricePaise: line.effectiveUnitPricePaise, automaticPaise: line.automaticDiscountPaise, couponPaise: line.couponDiscountPaise }, optionsSnapshot: { attributes: line.variant!.attributes, image: line.product!.image, cartLineId: input.mode === 'CART' ? line.itemId : null } })) } } });
+      await tx.orderStatusHistory.create({ data: { orderId: id, previousStatus: null, status: 'PENDING_PAYMENT', action: 'created', actorType: 'CUSTOMER' } });
+      return created;
     });
     return this.startPayment(created.id, owner.name, owner.email, shipping.phone);
   }
 
-  private async startPayment(orderId: string, name: string, email: string, contact?: string | null) {
+  private async startPayment(orderId: string, name: string, email: string, contact?: string | null, retry = false) {
     const order = await this.db.order.findUniqueOrThrow({ where: { id: orderId } });
     const keyId = this.razorpay.config().keyId;
     const providerOrderId = await this.razorpay.createOrder(order.totalPaise, order.orderNumber);
-    await this.db.paymentAttempt.create({ data: { orderId, provider: 'RAZORPAY', providerAccount: keyId, idempotencyKey: randomUUID(), providerOrderId, amountPaise: order.totalPaise, currency: 'INR', status: 'PENDING' } });
+    await this.db.$transaction(async tx => {
+      await tx.paymentAttempt.create({ data: { orderId, provider: 'RAZORPAY', providerAccount: keyId, idempotencyKey: randomUUID(), providerOrderId, amountPaise: order.totalPaise, currency: 'INR', status: 'PENDING' } });
+      if (retry) await tx.orderStatusHistory.create({ data: { orderId, previousStatus: order.status, status: order.status, action: 'payment_retry', paymentStatus: 'PENDING', actorType: 'CUSTOMER', note: 'Payment retried.' } });
+    });
     return { orderId, orderNumber: order.orderNumber, razorpayOrderId: providerOrderId, amount: order.totalPaise, currency: 'INR', keyId, prefill: { name, email, contact: contact ?? '' } };
   }
 
@@ -111,6 +117,6 @@ export class CustomerOrdersService {
       const variant = await this.db.productVariant.findUnique({ where: { id: line.variantIdSnapshot }, select: { stockQuantity: true } });
       if (!variant || variant.stockQuantity < line.quantity) throw new ConflictException(`${line.sku} is no longer available in the purchased quantity.`);
     }
-    return this.startPayment(order.id, name, email, order.phone);
+    return this.startPayment(order.id, name, email, order.phone, true);
   }
 }

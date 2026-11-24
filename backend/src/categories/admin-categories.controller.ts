@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { z } from 'zod';
 import { Roles } from '../auth/access';
 import { parse } from '../auth/contracts';
@@ -19,11 +19,15 @@ export class AdminCategoriesController {
   @Get() list(@Query() query: unknown) { return this.categories.list(parse(list, query)); }
   @Get('parents') parents(@Query() query: unknown) { return this.categories.parents(parse(parents, query).excludeId); }
   @Get(':id') detail(@Param('id') value: string) { return this.categories.detail(parse(id, value)); }
-  @Post() create(@Body() body: unknown) { return this.categories.create(parse(category, body)); }
+  @Post('with-images') @UseInterceptors(FilesInterceptor('images', 2, { limits: { files: 2, fileSize: uploadLimit } })) createWithImages(@Body('payload') payload: string, @UploadedFiles() files: Express.Multer.File[]) { let data: unknown; try { data = JSON.parse(payload); } catch { data = null; } return this.categories.createWithImages(parse(category, data), files); }
+  @Post() create(@Body() body: unknown) { return this.categories.createWithImages(parse(category, body), []); }
   @Patch(':id') update(@Param('id') value: string, @Body() body: unknown) { return this.categories.update(parse(id, value), parse(category.partial().strict(), body)); }
   @Patch(':id/status') status(@Param('id') value: string, @Body() body: unknown) { return this.categories.status(parse(id, value), parse(status, body).status); }
   @Delete(':id') remove(@Param('id') value: string) { return this.categories.remove(parse(id, value)); }
   @Post(':id/image') @UseInterceptors(FileInterceptor('image', { limits: { files: 1, fileSize: uploadLimit } }))
   replaceImage(@Param('id') value: string, @UploadedFile() file: Express.Multer.File) { return this.categories.replaceImage(parse(id, value), file); }
+  @Post(':id/secondary-image') @UseInterceptors(FileInterceptor('image', { limits: { files: 1, fileSize: uploadLimit } }))
+  replaceSecondaryImage(@Param('id') value: string, @UploadedFile() file: Express.Multer.File) { return this.categories.replaceSecondaryImage(parse(id, value), file); }
+  @Delete(':id/secondary-image') removeSecondaryImage(@Param('id') value: string) { return this.categories.removeSecondaryImage(parse(id, value)); }
   @Delete(':id/image') removeImage(@Param('id') value: string) { return this.categories.removeImage(parse(id, value)); }
 }
