@@ -148,7 +148,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          tar -czf source.tar.gz --exclude=.git --exclude=node_modules --exclude=dist --exclude=.next --exclude='*.log' --exclude='.env*' --exclude=source.tar.gz .
+          git archive --format=tar.gz -o "${RUNNER_TEMP}/source.tar.gz" HEAD
           production_content=$(python3 - <<'PYENV'
           import os
           keys = ['FRONTEND_PORT', 'BACKEND_PORT', 'POSTGRES_PORT', 'POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_DB', 'DATABASE_URL', 'NODE_ENV', 'FRONTEND_URL', 'NEXT_PUBLIC_API_URL', 'CORS_ORIGINS', 'JWT_SECRET', 'JWT_ISSUER', 'JWT_AUDIENCE', 'JWT_ACCESS_SECONDS', 'REFRESH_DAYS', 'ACTIVATION_HOURS', 'RESEND_COOLDOWN_SECONDS', 'RESEND_HOURLY_LIMIT', 'LOGIN_ACCOUNT_LIMIT', 'AUTH_IP_LIMIT', 'ADMIN_EMAIL', 'ADMIN_PASSWORD', 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'RAZORPAY_API_BASE_URL', 'RAZORPAY_CURRENCY', 'NEXT_PUBLIC_RAZORPAY_KEY_ID', 'NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET', 'CLOUDINARY_FOLDER', 'CLOUDINARY_VIDEO_FOLDER', 'CATEGORY_IMAGE_MAX_BYTES', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASSWORD', 'MAIL_FROM', 'STORE_NAME', 'ADMIN_NAME']
@@ -159,15 +159,15 @@ jobs:
           print("".join(f"{key}={quote(os.environ.get(key, ''))}\n" for key in keys), end="")
           PYENV
           )
-          printf '%s\n' "$production_content" > production.env
+          printf '%s\n' "$production_content" > "${RUNNER_TEMP}/production.env"
           unset production_content
-          chmod 600 production.env
+          chmod 600 "${RUNNER_TEMP}/production.env"
           export SSHPASS="$HOSTINGER_PASSWORD"
           sshpass -e ssh -p "$HOSTINGER_PORT" -o StrictHostKeyChecking=yes "$HOSTINGER_USER@$HOSTINGER_HOST" "mkdir -p -- '$HOSTINGER_APP_DIR' && chmod 700 -- '$HOSTINGER_APP_DIR'"
-          sshpass -e scp -P "$HOSTINGER_PORT" -o StrictHostKeyChecking=yes source.tar.gz "$HOSTINGER_USER@$HOSTINGER_HOST:$HOSTINGER_APP_DIR/source.tar.gz"
-          sshpass -e scp -P "$HOSTINGER_PORT" -o StrictHostKeyChecking=yes production.env "$HOSTINGER_USER@$HOSTINGER_HOST:$HOSTINGER_APP_DIR/.env"
+          sshpass -e scp -P "$HOSTINGER_PORT" -o StrictHostKeyChecking=yes "${RUNNER_TEMP}/source.tar.gz" "$HOSTINGER_USER@$HOSTINGER_HOST:$HOSTINGER_APP_DIR/source.tar.gz"
+          sshpass -e scp -P "$HOSTINGER_PORT" -o StrictHostKeyChecking=yes "${RUNNER_TEMP}/production.env" "$HOSTINGER_USER@$HOSTINGER_HOST:$HOSTINGER_APP_DIR/.env"
           sshpass -e ssh -p "$HOSTINGER_PORT" -o StrictHostKeyChecking=yes "$HOSTINGER_USER@$HOSTINGER_HOST" "chmod 600 -- '$HOSTINGER_APP_DIR/.env'"
-          rm -f production.env
+          rm -f "${RUNNER_TEMP}/source.tar.gz" "${RUNNER_TEMP}/production.env"
       - name: Deploy application
         shell: bash
         run: |
