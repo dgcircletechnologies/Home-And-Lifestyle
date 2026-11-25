@@ -39,8 +39,8 @@ export function PasswordField({ label, hint, error, id, ...props }: FieldProps) 
 export function Button({ children, busy = false, variant = 'primary', className = '', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { busy?: boolean; variant?: 'primary' | 'secondary' | 'text' }) {
   const styles = variant === 'primary' ? 'hl-primary-button' : variant === 'secondary' ? 'hl-secondary-button' : 'hl-text-button';
   const { disabled, ...buttonProps } = props;
-  return <button className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--hl-radius-sm)] px-5 text-sm font-semibold transition duration-150 disabled:cursor-wait disabled:opacity-60 ${styles} ${className}`} disabled={busy || disabled} {...buttonProps}>
-    {busy && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}{children}
+  return <button className={`auth-submit-button inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--hl-radius-sm)] px-5 text-sm font-semibold transition duration-150 disabled:cursor-wait disabled:opacity-60 ${styles} ${className}`} disabled={busy || disabled} {...buttonProps}>
+    {busy && <LoaderCircle className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />}{children}
   </button>;
 }
 

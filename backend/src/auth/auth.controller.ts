@@ -1,13 +1,14 @@
-import { Body, Controller, Delete, Get, HttpCode, Post, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Patch, Post, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { AuthRequest, Public, Roles, sessionCookie } from './access';
 import { authConfig } from './config';
 import { PrismaService } from '../prisma.service';
-import { emailBody, loginSchema, parse, registerSchema, tokenBody } from './contracts';
+import { emailBody, loginSchema, parse, profileSchema, registerSchema, tokenBody } from './contracts';
 import { ProfilePhotoService } from '../users/profile-photo.service';
 import { CategoryImageService } from '../categories/category-image.service';
+import { safeUser } from '../users/users.service';
 export function cookieSettings() {
   const { production } = authConfig();
   return { name: production ? '__Secure-hl_refresh' : 'hl_refresh', options: { httpOnly: true, secure: production, sameSite: 'lax' as const, path: '/api/auth' } };
@@ -50,8 +51,13 @@ export class AuthController {
 }
 @Controller('account')
 export class AccountController {
-  constructor(private readonly photos: ProfilePhotoService, private readonly images: CategoryImageService) {}
+  constructor(private readonly photos: ProfilePhotoService, private readonly images: CategoryImageService, private readonly db: PrismaService) {}
   @Roles('CUSTOMER') @Get() account(@Req() req: AuthRequest) { return req.user; }
+  @Roles('CUSTOMER') @Patch('profile')
+  async updateProfile(@Req() req: AuthRequest, @Body() body: unknown) {
+    const { name } = parse(profileSchema, body);
+    return safeUser(await this.db.user.update({ where: { id: req.user.id }, data: { name } }));
+  }
   @Roles('CUSTOMER', 'ADMIN') @Get('photo/config') photoConfig() { return { maxBytes: this.images.maxBytes(), formats: ['JPEG', 'PNG', 'WebP'], minDimension: 32, maxDimension: 8192, maxPixels: 16000000 }; }
   @Roles('CUSTOMER', 'ADMIN') @Post('photo') @UseInterceptors(FileInterceptor('image', { limits: { files: 1, fileSize: Number(process.env.CATEGORY_IMAGE_MAX_BYTES ?? 5242880) } }))
   photo(@Req() req: AuthRequest, @UploadedFile() file: Express.Multer.File) { return this.photos.upload(req.user.id, file); }
