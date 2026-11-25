@@ -15,7 +15,8 @@
     "admin:create": "node dist/src/admin-bootstrap.js",
     "seed:admin": "npm run build && node dist/src/admin-bootstrap.js",
     "seed:admin:prod": "node dist/src/seed-admin-prod.js",
-    "seed:demo": "npm run build && node dist/src/dev-seed.js",
+    "seed:demo": "npm run build && node dist/src/seed-demo.js",
+    "seed:demo:prod": "node dist/src/seed-demo.js",
     "seed:dashboard": "npm run build && node dist/src/seed-admin-dashboard.js",
     "test": "npm run build && node --test tests/*.test.cjs",
     "prisma:test:auth": "node prisma/tests/auth-upgrade.test.mjs"
