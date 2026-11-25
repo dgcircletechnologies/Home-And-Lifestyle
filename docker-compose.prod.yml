@@ -1,0 +1,68 @@
+name: home-and-lifestyle
+services:
+  postgres:
+    image: postgres:17.12-bookworm@sha256:40865bc877a289da75963d97d72b59633f639fc5af7a4e856bfa3714cae5b536
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:?POSTGRES_PORT required}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+      args:
+        BACKEND_PORT: ${BACKEND_PORT:?BACKEND_PORT required}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL required}
+      BACKEND_PORT: ${BACKEND_PORT:?BACKEND_PORT required}
+    ports:
+      - "${BACKEND_PORT:?BACKEND_PORT required}:${BACKEND_PORT:?BACKEND_PORT required}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+process.env.BACKEND_PORT+'/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 4s
+      retries: 10
+      start_period: 30s
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        FRONTEND_PORT: ${FRONTEND_PORT:?FRONTEND_PORT required}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL required}
+        NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:?NEXT_PUBLIC_RAZORPAY_KEY_ID required}
+        NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL: ${NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL:?NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL required}
+    restart: unless-stopped
+    environment:
+      FRONTEND_PORT: ${FRONTEND_PORT:?FRONTEND_PORT required}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL required}
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:?NEXT_PUBLIC_RAZORPAY_KEY_ID required}
+      NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL: ${NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL:?NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL required}
+    ports:
+      - "${FRONTEND_PORT:?FRONTEND_PORT required}:${FRONTEND_PORT:?FRONTEND_PORT required}"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+process.env.FRONTEND_PORT+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+volumes:
+  postgres_data:

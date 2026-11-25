@@ -1,0 +1,201 @@
+name: Home and Lifestyle CI/CD
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: home-and-lifestyle-production
+  cancel-in-progress: false
+jobs:
+  ci:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    env:
+      BACKEND_PORT: ${{ secrets.BACKEND_PORT || vars.BACKEND_PORT }}
+      FRONTEND_PORT: ${{ secrets.FRONTEND_PORT || vars.FRONTEND_PORT }}
+      NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || vars.NEXT_PUBLIC_API_URL }}
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: ${{ secrets.NEXT_PUBLIC_RAZORPAY_KEY_ID || vars.NEXT_PUBLIC_RAZORPAY_KEY_ID }}
+      NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL: ${{ secrets.NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL || vars.NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Validate build configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in BACKEND_PORT FRONTEND_PORT NEXT_PUBLIC_API_URL NEXT_PUBLIC_RAZORPAY_KEY_ID NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL; do
+            if [[ -z "${!key:-}" ]]; then echo "Missing required build variable: $key" >&2; exit 1; fi
+          done
+          for key in BACKEND_PORT FRONTEND_PORT; do
+            if [[ ! "${!key}" =~ ^[0-9]+$ ]] || (( 10#${!key} < 1 || 10#${!key} > 65535 )); then echo "Invalid port: $key" >&2; exit 1; fi
+          done
+      - name: Build backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.prod
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+          build-args: |
+            BACKEND_PORT=${{ env.BACKEND_PORT }}
+      - name: Build frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.prod
+          push: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+          build-args: |
+            FRONTEND_PORT=${{ env.FRONTEND_PORT }}
+            NEXT_PUBLIC_API_URL=${{ env.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_RAZORPAY_KEY_ID=${{ env.NEXT_PUBLIC_RAZORPAY_KEY_ID }}
+            NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL=${{ env.NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL }}
+  deploy:
+    name: Deploy to Hostinger
+    needs: [ci]
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST || vars.HOSTINGER_HOST }}
+      HOSTINGER_USER: ${{ secrets.HOSTINGER_USER || vars.HOSTINGER_USER }}
+      HOSTINGER_PORT: ${{ secrets.HOSTINGER_PORT || vars.HOSTINGER_PORT }}
+      HOSTINGER_PASSWORD: ${{ secrets.HOSTINGER_PASSWORD || vars.HOSTINGER_PASSWORD }}
+      HOSTINGER_APP_DIR: ${{ secrets.HOSTINGER_APP_DIR || vars.HOSTINGER_APP_DIR }}
+      FRONTEND_PORT: ${{ secrets.FRONTEND_PORT || vars.FRONTEND_PORT }}
+      BACKEND_PORT: ${{ secrets.BACKEND_PORT || vars.BACKEND_PORT }}
+      POSTGRES_PORT: ${{ secrets.POSTGRES_PORT || vars.POSTGRES_PORT }}
+      POSTGRES_USER: ${{ secrets.POSTGRES_USER || vars.POSTGRES_USER }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || vars.POSTGRES_PASSWORD }}
+      POSTGRES_DB: ${{ secrets.POSTGRES_DB || vars.POSTGRES_DB }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
+      NODE_ENV: ${{ secrets.NODE_ENV || vars.NODE_ENV }}
+      FRONTEND_URL: ${{ secrets.FRONTEND_URL || vars.FRONTEND_URL }}
+      NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || vars.NEXT_PUBLIC_API_URL }}
+      CORS_ORIGINS: ${{ secrets.CORS_ORIGINS || vars.CORS_ORIGINS }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
+      JWT_ISSUER: ${{ secrets.JWT_ISSUER || vars.JWT_ISSUER }}
+      JWT_AUDIENCE: ${{ secrets.JWT_AUDIENCE || vars.JWT_AUDIENCE }}
+      JWT_ACCESS_SECONDS: ${{ secrets.JWT_ACCESS_SECONDS || vars.JWT_ACCESS_SECONDS }}
+      REFRESH_DAYS: ${{ secrets.REFRESH_DAYS || vars.REFRESH_DAYS }}
+      ACTIVATION_HOURS: ${{ secrets.ACTIVATION_HOURS || vars.ACTIVATION_HOURS }}
+      RESEND_COOLDOWN_SECONDS: ${{ secrets.RESEND_COOLDOWN_SECONDS || vars.RESEND_COOLDOWN_SECONDS }}
+      RESEND_HOURLY_LIMIT: ${{ secrets.RESEND_HOURLY_LIMIT || vars.RESEND_HOURLY_LIMIT }}
+      LOGIN_ACCOUNT_LIMIT: ${{ secrets.LOGIN_ACCOUNT_LIMIT || vars.LOGIN_ACCOUNT_LIMIT }}
+      AUTH_IP_LIMIT: ${{ secrets.AUTH_IP_LIMIT || vars.AUTH_IP_LIMIT }}
+      ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL || vars.ADMIN_EMAIL }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || vars.ADMIN_PASSWORD }}
+      RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID || vars.RAZORPAY_KEY_ID }}
+      RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET || vars.RAZORPAY_KEY_SECRET }}
+      RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_WEBHOOK_SECRET || vars.RAZORPAY_WEBHOOK_SECRET }}
+      RAZORPAY_API_BASE_URL: ${{ secrets.RAZORPAY_API_BASE_URL || vars.RAZORPAY_API_BASE_URL }}
+      RAZORPAY_CURRENCY: ${{ secrets.RAZORPAY_CURRENCY || vars.RAZORPAY_CURRENCY }}
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: ${{ secrets.NEXT_PUBLIC_RAZORPAY_KEY_ID || vars.NEXT_PUBLIC_RAZORPAY_KEY_ID }}
+      NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL: ${{ secrets.NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL || vars.NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL }}
+      CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME || vars.CLOUDINARY_CLOUD_NAME }}
+      CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY || vars.CLOUDINARY_API_KEY }}
+      CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET || vars.CLOUDINARY_API_SECRET }}
+      CLOUDINARY_FOLDER: ${{ secrets.CLOUDINARY_FOLDER || vars.CLOUDINARY_FOLDER }}
+      CLOUDINARY_VIDEO_FOLDER: ${{ secrets.CLOUDINARY_VIDEO_FOLDER || vars.CLOUDINARY_VIDEO_FOLDER }}
+      CATEGORY_IMAGE_MAX_BYTES: ${{ secrets.CATEGORY_IMAGE_MAX_BYTES || vars.CATEGORY_IMAGE_MAX_BYTES }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST || vars.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT || vars.SMTP_PORT }}
+      SMTP_SECURE: ${{ secrets.SMTP_SECURE || vars.SMTP_SECURE }}
+      SMTP_USER: ${{ secrets.SMTP_USER || vars.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD || vars.SMTP_PASSWORD }}
+      MAIL_FROM: ${{ secrets.MAIL_FROM || vars.MAIL_FROM }}
+      STORE_NAME: ${{ secrets.STORE_NAME || vars.STORE_NAME }}
+      ADMIN_NAME: ${{ secrets.ADMIN_NAME || vars.ADMIN_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in HOSTINGER_HOST HOSTINGER_USER HOSTINGER_PORT HOSTINGER_PASSWORD HOSTINGER_APP_DIR FRONTEND_PORT BACKEND_PORT POSTGRES_PORT POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB DATABASE_URL NODE_ENV FRONTEND_URL NEXT_PUBLIC_API_URL CORS_ORIGINS JWT_SECRET JWT_ISSUER JWT_AUDIENCE JWT_ACCESS_SECONDS REFRESH_DAYS ACTIVATION_HOURS RESEND_COOLDOWN_SECONDS RESEND_HOURLY_LIMIT LOGIN_ACCOUNT_LIMIT AUTH_IP_LIMIT ADMIN_EMAIL ADMIN_PASSWORD RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET RAZORPAY_API_BASE_URL RAZORPAY_CURRENCY NEXT_PUBLIC_RAZORPAY_KEY_ID NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL CLOUDINARY_CLOUD_NAME CLOUDINARY_API_KEY CLOUDINARY_API_SECRET CLOUDINARY_FOLDER CLOUDINARY_VIDEO_FOLDER CATEGORY_IMAGE_MAX_BYTES SMTP_HOST SMTP_PORT SMTP_SECURE SMTP_USER SMTP_PASSWORD MAIL_FROM STORE_NAME; do
+            if [[ -z "${!key:-}" ]]; then echo "Missing required deployment setting: $key" >&2; exit 1; fi
+          done
+          for key in HOSTINGER_PORT FRONTEND_PORT BACKEND_PORT POSTGRES_PORT SMTP_PORT; do
+            if [[ ! "${!key}" =~ ^[0-9]+$ ]] || (( 10#${!key} < 1 || 10#${!key} > 65535 )); then echo "Invalid port: $key" >&2; exit 1; fi
+          done
+          if [[ "$NODE_ENV" != production ]]; then echo "NODE_ENV must be production" >&2; exit 1; fi
+          if [[ ! "$HOSTINGER_HOST" =~ ^[A-Za-z0-9.-]+$ || ! "$HOSTINGER_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]; then echo "Invalid Hostinger host or user" >&2; exit 1; fi
+          if [[ ! "$HOSTINGER_APP_DIR" =~ ^/[A-Za-z0-9_./-]+$ ]]; then echo "HOSTINGER_APP_DIR must be an absolute path without spaces or shell metacharacters" >&2; exit 1; fi
+          python3 - <<'PYVALIDATE'
+          import os
+          from urllib.parse import urlparse
+          parsed = urlparse(os.environ["DATABASE_URL"])
+          if parsed.scheme not in ("postgres", "postgresql") or parsed.hostname != "postgres" or not parsed.username or not parsed.password or not parsed.path.strip("/"):
+              raise SystemExit("DATABASE_URL must use the postgres Compose service host and include credentials and a database")
+          if os.environ["NEXT_PUBLIC_RAZORPAY_KEY_ID"] != os.environ["RAZORPAY_KEY_ID"]:
+              raise SystemExit("NEXT_PUBLIC_RAZORPAY_KEY_ID must match RAZORPAY_KEY_ID")
+          PYVALIDATE
+      - name: Configure SSH known hosts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p "$HOSTINGER_PORT" -H "$HOSTINGER_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Package and upload source and environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          tar -czf source.tar.gz --exclude=.git --exclude=node_modules --exclude=dist --exclude=.next --exclude='*.log' --exclude='.env*' --exclude=source.tar.gz .
+          production_content=$(python3 - <<'PYENV'
+          import os
+          keys = ['FRONTEND_PORT', 'BACKEND_PORT', 'POSTGRES_PORT', 'POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_DB', 'DATABASE_URL', 'NODE_ENV', 'FRONTEND_URL', 'NEXT_PUBLIC_API_URL', 'CORS_ORIGINS', 'JWT_SECRET', 'JWT_ISSUER', 'JWT_AUDIENCE', 'JWT_ACCESS_SECONDS', 'REFRESH_DAYS', 'ACTIVATION_HOURS', 'RESEND_COOLDOWN_SECONDS', 'RESEND_HOURLY_LIMIT', 'LOGIN_ACCOUNT_LIMIT', 'AUTH_IP_LIMIT', 'ADMIN_EMAIL', 'ADMIN_PASSWORD', 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'RAZORPAY_API_BASE_URL', 'RAZORPAY_CURRENCY', 'NEXT_PUBLIC_RAZORPAY_KEY_ID', 'NEXT_PUBLIC_RAZORPAY_CHECKOUT_SCRIPT_URL', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET', 'CLOUDINARY_FOLDER', 'CLOUDINARY_VIDEO_FOLDER', 'CATEGORY_IMAGE_MAX_BYTES', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASSWORD', 'MAIL_FROM', 'STORE_NAME', 'ADMIN_NAME']
+          def quote(value):
+              if "\n" in value or "\r" in value:
+                  raise SystemExit("Multiline environment values are not supported")
+              return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('$', '$$') + '"'
+          print("".join(f"{key}={quote(os.environ.get(key, ''))}\n" for key in keys), end="")
+          PYENV
+          )
+          printf '%s\n' "$production_content" > production.env
+          unset production_content
+          chmod 600 production.env
+          export SSHPASS="$HOSTINGER_PASSWORD"
+          sshpass -e ssh -p "$HOSTINGER_PORT" -o StrictHostKeyChecking=yes "$HOSTINGER_USER@$HOSTINGER_HOST" "mkdir -p -- '$HOSTINGER_APP_DIR' && chmod 700 -- '$HOSTINGER_APP_DIR'"
+          sshpass -e scp -P "$HOSTINGER_PORT" -o StrictHostKeyChecking=yes source.tar.gz "$HOSTINGER_USER@$HOSTINGER_HOST:$HOSTINGER_APP_DIR/source.tar.gz"
+          sshpass -e scp -P "$HOSTINGER_PORT" -o StrictHostKeyChecking=yes production.env "$HOSTINGER_USER@$HOSTINGER_HOST:$HOSTINGER_APP_DIR/.env"
+          sshpass -e ssh -p "$HOSTINGER_PORT" -o StrictHostKeyChecking=yes "$HOSTINGER_USER@$HOSTINGER_HOST" "chmod 600 -- '$HOSTINGER_APP_DIR/.env'"
+          rm -f production.env
+      - name: Deploy application
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$HOSTINGER_PASSWORD"
+          sshpass -e ssh -p "$HOSTINGER_PORT" -o StrictHostKeyChecking=yes "$HOSTINGER_USER@$HOSTINGER_HOST" "bash -se -- '$HOSTINGER_APP_DIR'" <<'REMOTE'
+          set -euo pipefail
+          cd "$1"
+          find . -mindepth 1 -maxdepth 1 ! -name .env ! -name source.tar.gz -exec rm -rf -- {} +
+          tar -xzf source.tar.gz
+          rm source.tar.gz
+          for file in docker-compose.prod.yml backend/Dockerfile.prod frontend/Dockerfile.prod .env; do
+            test -f "$file" || { echo "Missing deployment file: $file" >&2; exit 1; }
+          done
+          chmod 600 .env
+          docker compose -f docker-compose.prod.yml config -q
+          docker compose -f docker-compose.prod.yml build
+          if ! docker compose -f docker-compose.prod.yml up -d --remove-orphans; then
+            docker compose -f docker-compose.prod.yml logs --tail=100 postgres backend frontend
+            exit 1
+          fi
+          docker compose -f docker-compose.prod.yml exec -T backend npx prisma migrate deploy
+          docker compose -f docker-compose.prod.yml exec -T backend npm run seed:admin:prod
+          for attempt in 1 2 3 4 5; do
+            if docker compose -f docker-compose.prod.yml exec -T backend node -e "fetch('http://127.0.0.1:'+process.env.BACKEND_PORT+'/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then break; fi
+            if [[ "$attempt" == 5 ]]; then echo 'Backend readiness check failed' >&2; exit 1; fi
+            sleep 2
+          done
+          docker compose -f docker-compose.prod.yml ps
+          docker image prune -f
+          REMOTE
