@@ -6,20 +6,19 @@ import { ChevronDown, Menu, Search, ShoppingBag, X } from 'lucide-react';
 import { useAuth } from '../features/auth/provider';
 import { useCart } from '../features/cart/cart-provider';
 import { useStoreConfig } from '../features/store/use-store-config';
-import { catalog, categoryHref, type StoreCategory, type StoreCollection } from '../features/store/catalog';
+import { catalog, categoryHref, type StoreCategory } from '../features/store/catalog';
 import { Avatar } from './avatar';
 
 const hiddenOn = ['/check-email','/activate'];
 export function Header() {
   const pathname = usePathname(), params = useSearchParams(), router = useRouter(), auth = useAuth(), cart = useCart(), store = useStoreConfig();
-  const [categories,setCategories]=useState<StoreCategory[]>([]),[visibleCount,setVisibleCount]=useState(3),[collections,setCollections]=useState<StoreCollection[]>([]),[drawer,setDrawer]=useState<'closed'|'open'|'closing'>('closed'),[group,setGroup]=useState<string|null>(null),[desktopGroup,setDesktopGroup]=useState<string|null>(null),[accountOpen,setAccountOpen]=useState(false),[searchOpen,setSearchOpen]=useState(false),[search,setSearch]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  const [categories,setCategories]=useState<StoreCategory[]>([]),[visibleCount,setVisibleCount]=useState(3),[drawer,setDrawer]=useState<'closed'|'open'|'closing'>('closed'),[group,setGroup]=useState<string|null>(null),[desktopGroup,setDesktopGroup]=useState<string|null>(null),[accountOpen,setAccountOpen]=useState(false),[searchOpen,setSearchOpen]=useState(false),[search,setSearch]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const trigger=useRef<HTMLButtonElement>(null),panel=useRef<HTMLDivElement>(null),accountMenu=useRef<HTMLDivElement>(null),desktopNav=useRef<HTMLElement>(null),closeTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const roots=useMemo(()=>categories.filter(c=>!c.parentId),[categories]);
   const children=useCallback((id:string)=>categories.filter(c=>c.parentId===id),[categories]);
   useEffect(()=>{const nav=desktopNav.current;if(!nav)return;const measure=()=>{const canvas=document.createElement('canvas');const context=canvas.getContext('2d');if(!context)return;context.font='700 13px Arial';const gap=parseFloat(getComputedStyle(nav).columnGap)||16;const width=(label:string)=>context.measureText(label).width;let used=width('Home')+width('Shop All')+width('New Arrivals')+width('About')+gap*5;let count=0;for(const item of roots){const remaining=roots.length-count-1;const reserved=remaining>0?width('More')+28+gap:0;const itemWidth=width(item.name)+22+gap;if(used+itemWidth+reserved>nav.clientWidth)break;used+=itemWidth;count++}setVisibleCount(count)};const observer=new ResizeObserver(measure);observer.observe(nav);measure();return()=>observer.disconnect()},[roots]);
-  useEffect(()=>{let live=true;catalog.navigation().then(value=>{if(live){setCategories(value.categories);setCollections(value.collections)}}).catch(()=>{});return()=>{live=false}},[]);
+  useEffect(()=>{let live=true;catalog.navigation().then(value=>{if(live){setCategories(value.categories)}}).catch(()=>{});return()=>{live=false}},[]);
   const isCategoryActive=(item:StoreCategory)=>pathname===categoryHref(item)||children(item.id).some(child=>pathname===categoryHref(child));
-  const giftingCollection=collections.find(item=>/gift/i.test(item.name));
   const finishClose=useCallback(()=>{if(closeTimer.current)clearTimeout(closeTimer.current);closeTimer.current=setTimeout(()=>setDrawer('closed'),280)},[]);
   const closeDrawer=useCallback(()=>{setDrawer(current=>current==='closed'?'closed':'closing');finishClose()},[finishClose]);
   const openDrawer=()=>{if(closeTimer.current)clearTimeout(closeTimer.current);setDrawer('open')};

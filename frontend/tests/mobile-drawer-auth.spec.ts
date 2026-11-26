@@ -41,7 +41,14 @@ test.describe('Mobile Sidebar Drawer & Top Navbar Auth Consolidation', () => {
         await page.route('**/api/store/config', route => route.fulfill({ json: storeConfig }));
         await page.route('**/api/storefront/navigation', route => route.fulfill({ json: navigationData }));
         await page.route('**/api/storefront/home', route => route.fulfill({ json: { categories: navigationData.categories, featured: [], latest: [], giftable: [], collections: [], offers: [] } }));
+        await page.route('**/api/auth/refresh', route => route.fulfill({
+          status: 401,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: { code: 'REFRESH_INVALID', message: 'No session.' } }),
+        }));
         await page.route('**/api/auth/me', route => route.fulfill({ status: 401, json: { message: 'Unauthorized' } }));
+        await page.route('**/api/cart/**', route => route.fulfill({ json: { lines: [], subtotalPaise: 0, discountPaise: 0, totalPaise: 0, itemsCount: 0, canCheckout: false } }));
+        await page.route('**/api/cart', route => route.fulfill({ json: { lines: [], subtotalPaise: 0, discountPaise: 0, totalPaise: 0, itemsCount: 0, canCheckout: false } }));
 
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await page.goto('/');
@@ -66,10 +73,10 @@ test.describe('Mobile Sidebar Drawer & Top Navbar Auth Consolidation', () => {
         // 4. Drawer contains main navigation links
         const nav = drawer.locator('nav[aria-label="Mobile shop"]');
         await expect(nav).toBeVisible();
-        await expect(nav.getByRole('link', { name: 'Home' })).toBeVisible();
-        await expect(nav.getByRole('link', { name: 'Shop All' })).toBeVisible();
-        await expect(nav.getByRole('link', { name: 'New Arrivals' })).toBeVisible();
-        await expect(nav.getByRole('link', { name: 'About' })).toBeVisible();
+        await expect(nav.getByRole('link', { name: 'Home', exact: true })).toBeVisible();
+        await expect(nav.getByRole('link', { name: 'Shop All', exact: true })).toBeVisible();
+        await expect(nav.getByRole('link', { name: 'New Arrivals', exact: true })).toBeVisible();
+        await expect(nav.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 
         // 5. Drawer strictly contains NO auth / login / sign up / account links
         await expect(drawer.locator('.store-drawer-account')).toHaveCount(0);
@@ -88,7 +95,14 @@ test.describe('Mobile Sidebar Drawer & Top Navbar Auth Consolidation', () => {
         await page.route('**/api/store/config', route => route.fulfill({ json: storeConfig }));
         await page.route('**/api/storefront/navigation', route => route.fulfill({ json: navigationData }));
         await page.route('**/api/storefront/home', route => route.fulfill({ json: { categories: navigationData.categories, featured: [], latest: [], giftable: [], collections: [], offers: [] } }));
+        await page.route('**/api/auth/refresh', route => route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ user: customerUser, accessToken: 'test-token', expiresIn: 900 }),
+        }));
         await page.route('**/api/auth/me', route => route.fulfill({ status: 200, json: customerUser }));
+        await page.route('**/api/cart/**', route => route.fulfill({ json: { lines: [], subtotalPaise: 0, discountPaise: 0, totalPaise: 0, itemsCount: 0, canCheckout: false } }));
+        await page.route('**/api/cart', route => route.fulfill({ json: { lines: [], subtotalPaise: 0, discountPaise: 0, totalPaise: 0, itemsCount: 0, canCheckout: false } }));
 
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await page.goto('/');
@@ -123,8 +137,8 @@ test.describe('Mobile Sidebar Drawer & Top Navbar Auth Consolidation', () => {
         await expect(drawer.locator('#mobile-shop-search')).toBeVisible();
         const nav = drawer.locator('nav[aria-label="Mobile shop"]');
         await expect(nav).toBeVisible();
-        await expect(nav.getByRole('link', { name: 'Home' })).toBeVisible();
-        await expect(nav.getByRole('link', { name: 'Shop All' })).toBeVisible();
+        await expect(nav.getByRole('link', { name: 'Home', exact: true })).toBeVisible();
+        await expect(nav.getByRole('link', { name: 'Shop All', exact: true })).toBeVisible();
 
         // 4. Confirm strictly NO Profile / Account / Logout in drawer
         await expect(drawer.locator('.store-drawer-account')).toHaveCount(0);
