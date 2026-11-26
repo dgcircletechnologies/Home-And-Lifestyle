@@ -145,3 +145,64 @@ test('a single active offer still fills both seamless ticker tracks', async ({ p
   await expect(page.getByRole('link', { name: '10% off on Lighting piece 1' })).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440);
 });
+
+test('offers strip items have vertical breathing room with no clipping on hover or focus at desktop and mobile', async ({ page }) => {
+  const offers = [
+    { id: 'product-offer', title: 'Lamp special', discountType: 'PERCENTAGE', discountValue: 20, targetType: 'PRODUCT', targetId: lighting[0].id, targetName: lighting[0].name, targetSlug: lighting[0].slug },
+    { id: 'category-offer', title: 'Planter special', discountType: 'FIXED', discountValue: 200, targetType: 'CATEGORY', targetId: 'planters', targetName: 'Planters & Greenery', targetSlug: 'planters' },
+  ];
+  await page.route('**/api/storefront/home', route => route.fulfill({ json: { ...home, offers } }));
+
+  for (const width of [1280, 375]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto('/');
+
+    const strip = page.locator('.store-offers');
+    await expect(strip).toBeVisible();
+    const firstPill = strip.getByRole('link', { name: '20% off on Lighting piece 1' });
+    await expect(firstPill).toBeVisible();
+
+    // 1. Resting state: verify vertical breathing room inside the window
+    const restingBounds = await page.evaluate(() => {
+      const win = document.querySelector('.store-offers-window')!.getBoundingClientRect();
+      const pill = document.querySelector('.store-offer-item')!.getBoundingClientRect();
+      return {
+        topClearance: pill.top - win.top,
+        bottomClearance: win.bottom - pill.bottom,
+      };
+    });
+    expect(restingBounds.topClearance).toBeGreaterThanOrEqual(7);
+    expect(restingBounds.bottomClearance).toBeGreaterThanOrEqual(7);
+
+    // 2. Hover state: verify hover lift maintains top breathing room
+    await strip.locator('.store-offers-window').hover();
+    await firstPill.hover({ force: true });
+    const hoverBounds = await page.evaluate(() => {
+      const win = document.querySelector('.store-offers-window')!.getBoundingClientRect();
+      const pill = document.querySelector('.store-offer-item')!.getBoundingClientRect();
+      return {
+        topClearance: pill.top - win.top,
+        bottomClearance: win.bottom - pill.bottom,
+      };
+    });
+    expect(hoverBounds.topClearance).toBeGreaterThanOrEqual(5);
+    expect(hoverBounds.bottomClearance).toBeGreaterThanOrEqual(5);
+
+    // 3. Focus state: verify focus-visible clearance (outline 2px + offset 3px = 5px)
+    await firstPill.focus();
+    const focusBounds = await page.evaluate(() => {
+      const win = document.querySelector('.store-offers-window')!.getBoundingClientRect();
+      const pill = document.querySelector('.store-offer-item')!.getBoundingClientRect();
+      return {
+        topClearance: pill.top - win.top,
+        bottomClearance: win.bottom - pill.bottom,
+      };
+    });
+    expect(focusBounds.topClearance).toBeGreaterThanOrEqual(5);
+    expect(focusBounds.bottomClearance).toBeGreaterThanOrEqual(5);
+
+    // 4. Zero horizontal overflow on the page
+    const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+    expect(hasHorizontalOverflow).toBe(false);
+  }
+});

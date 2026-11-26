@@ -11,20 +11,33 @@ export function ProductCard({product,shop=false,video=false}:{product:StoreProdu
   useEffect(()=>{ if(!videoRef.current)return; if(motionAllowed) void videoRef.current.play().catch(()=>undefined); else videoRef.current.pause(); },[motionAllowed]);
   const savingPaise = product.compareAtPricePaise !== null && product.minPricePaise !== null
     ? product.compareAtPricePaise - product.minPricePaise : 0;
-  return <article className="store-product-card">
+  return <article className="store-product-card flex flex-col h-full rounded-2xl">
     <Link className="store-product-photo" href={productHref(product)}>
       {video && product.videoUrl ? <><ProductImage product={product}/><video ref={videoRef} src={product.videoUrl} poster={product.primaryImage?.url ?? product.image?.url ?? undefined} autoPlay={motionAllowed} muted loop playsInline preload="metadata" aria-label={`${product.name} product video`} className="store-motion-video"/></> : <ProductImage product={product}/>}
       {shop && savingPaise > 0 && <span className="store-offer-ribbon"><span className="store-offer-ribbon-surface">{rupees(savingPaise)} OFF</span></span>}
       {shop && !product.available && <span className="store-stock-overlay"><strong>Out of stock</strong></span>}
       {!video && (product.secondaryImage ?? product.images?.[1]) && <img className="store-product-alt" src={(product.secondaryImage ?? product.images[1]).url} alt="" loading="lazy"/>}
     </Link>
-    <div className="store-product-copy">
+    <div className="store-product-copy flex flex-col flex-1 p-3.5 sm:p-4">
       <p className="store-product-category">{product.categories[0]?.name??'The collection'}</p>
-      <Link href={productHref(product)} className="store-product-name">{product.name}</Link>
-      <div className="store-price">{product.minPricePaise!==null?<>{product.variantCount>1?'Starts from ':''}{rupees(product.minPricePaise)}{savingPaise > 0 && <del>{rupees(product.compareAtPricePaise!)}</del>}</>:<span>Price on request</span>}</div>
+      <Link href={productHref(product)} className="store-product-name truncate block" title={product.name}>{product.name}</Link>
+      <div className="store-price tabular-nums mt-1.5">{product.minPricePaise!==null?<>{product.variantCount>1?'Starts from ':''}{rupees(product.minPricePaise)}{savingPaise > 0 && <del className="tabular-nums">{rupees(product.compareAtPricePaise!)}</del>}</>:<span>Price on request</span>}</div>
       {!product.available && <p className="store-product-unavailable">Sold out</p>}
       <Link className="store-product-view" href={productHref(product)}>View piece <ArrowRight size={15}/></Link>
     </div>
   </article>;
 }
-export function CategoryTile({category,offerLabel}:{category:StoreCategory;offerLabel?:string}) { return <Link className="store-category-tile" href={categoryHref(category)}><div className="store-category-photo"><StorePhoto url={category.primaryImage?.url ?? category.image?.url} alt={category.name}/>{category.secondaryImage && <img className="store-category-alt" src={category.secondaryImage.url} alt="" loading="lazy"/>}{offerLabel&&<span className="store-category-offer-badge">{offerLabel}</span>}</div><span>{category.name}<ArrowRight size={17}/></span></Link>; }
+export function CategoryTile({category,offerLabel}:{category:StoreCategory;offerLabel?:string}) {
+  return <Link className="store-category-tile" href={categoryHref(category)}>
+    <div className="store-category-photo">
+      <StorePhoto url={category.primaryImage?.url ?? category.image?.url} alt={category.name}/>
+      {category.secondaryImage && <img className="store-category-alt" src={category.secondaryImage.url} alt="" loading="lazy"/>}
+      {offerLabel && <span className="store-category-offer-badge">{offerLabel}</span>}
+      <div className="store-category-scrim" aria-hidden="true"/>
+      <div className="store-category-content">
+        <h3 className="store-category-name">{category.name}</h3>
+        <span className="store-category-action">Explore <ArrowRight size={15} className="store-category-arrow"/></span>
+      </div>
+    </div>
+  </Link>;
+}

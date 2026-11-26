@@ -64,7 +64,7 @@ test('discounted cards show a red pulsing corner ribbon; regular cards do not', 
   await expect(offered.locator('.store-stock-overlay')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0.56)');
   await expect(offered.locator('.store-stock-overlay')).toHaveCSS('color', 'rgb(255, 119, 126)');
   await expect(offered.locator('.store-price')).toHaveCSS('color', 'rgb(40, 97, 58)');
-  await expect(offered.locator('.store-price del')).toHaveCSS('color', 'rgb(173, 48, 56)');
+  await expect(offered.locator('.store-price del')).toHaveCSS('color', 'rgb(118, 110, 101)');
   await expect(offered.locator('.store-offer-ribbon-surface')).toHaveCSS('background-color', 'rgb(169, 31, 40)');
   await expect(offered.locator('.store-offer-ribbon-surface')).toHaveCSS('animation-name', 'store-offer-pulse');
   await expect(regular.locator('.store-offer-ribbon')).toHaveCount(0);
