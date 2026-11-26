@@ -114,9 +114,9 @@ test.describe('Category cards editorial redesign and Footer spacing', () => {
     const footer = page.locator('footer.store-footer');
     await expect(footer).toBeVisible();
 
-    // Desktop footer grid columns: 4 columns
+    // Desktop footer grid columns: 3 columns (intro, support, policies)
     const desktopCols = await footer.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
-    expect(desktopCols).toBe(4);
+    expect(desktopCols).toBe(3);
 
     // Consistent link gap in nav columns
     const navGap = await footer.locator('nav').first().evaluate(el => getComputedStyle(el).gap);

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { PromotionMailService } from './promotion-mail.service';
 
 const bad = (message: string) => new BadRequestException({ code: 'PROMOTION_INVALID', message });
 const scopeIds = (rule: any) => [...(rule.productIds ?? rule.products?.map((link: any) => link.productId) ?? []), ...(rule.categoryIds ?? rule.categories?.map((link: any) => link.categoryId) ?? []), ...(rule.collectionIds ?? rule.collections?.map((link: any) => link.collectionId) ?? [])];
@@ -9,7 +10,28 @@ const state = (rule: any, now: Date, endField: 'endsAt' | 'expiresAt') => rule.l
 const normalize = (code: string) => code.trim().toUpperCase();
 @Injectable()
 export class AdminPromotionsService {
-  constructor(private readonly db: PrismaService) {}
+  constructor(
+    private readonly db: PrismaService,
+    private readonly mailService: PromotionMailService,
+  ) {}
+  async verifiedCustomersCount() {
+    const count = await this.mailService.countVerifiedCustomers();
+    return { count };
+  }
+  async share(id: string) {
+    const promotion = await this.db.promotion.findUnique({ where: { id } });
+    if (!promotion) throw new NotFoundException({ code: 'PROMOTION_NOT_FOUND', message: 'Offer not found.' });
+    if (!promotion.productId && !promotion.categoryId) {
+      throw bad('Only Category and Product discounts can be shared via email.');
+    }
+    const effectiveStatus = state(promotion, new Date(), 'endsAt');
+    if (effectiveStatus !== 'ACTIVE' && effectiveStatus !== 'SCHEDULED') {
+      throw bad(`Cannot share an offer with status ${effectiveStatus}. It must be active or scheduled.`);
+    }
+    const count = await this.mailService.countVerifiedCustomers();
+    void this.mailService.sendPromotionCampaign(id).catch(() => undefined);
+    return { targetedCount: count, queued: true };
+  }
   private async check(input: any) {
     if ((input.kind === 'FIXED') === (input.amountPaise == null) || (input.kind === 'PERCENTAGE') === (input.percentBasisPoints == null)) throw bad('Set exactly one discount amount matching the selected kind.');
     if (input.startsAt && (input.endsAt || input.expiresAt) && new Date(input.startsAt) >= new Date(input.endsAt ?? input.expiresAt)) throw bad('The end must be after the start.');
@@ -27,9 +49,38 @@ export class AdminPromotionsService {
   }
   private async rows() { const [automatic, coupons] = await Promise.all([this.db.promotion.findMany({ include: { product: { select: { name: true } }, category: { select: { name: true } } } }), this.db.coupon.findMany({ include: { products: true, categories: true, collections: true, _count: { select: { redemptions: true } } } })]); return [...automatic.map(rule => ({ ...rule, type: 'AUTOMATIC' as const, effectiveStatus: state(rule, new Date(), 'endsAt') })), ...coupons.map(rule => ({ ...rule, type: 'COUPON' as const, effectiveStatus: state(rule, new Date(), 'expiresAt') }))]; }
   async list(query: { page: number; pageSize: number; search?: string; type?: string; status?: string }) { const rows = (await this.rows()).filter(rule => (!query.type || rule.type === query.type) && (!query.status || rule.effectiveStatus === query.status) && (!query.search || [rule.name, 'code' in rule ? rule.code : ''].some(text => text.toLowerCase().includes(query.search!.toLowerCase())))).sort((a, b) => b.id.localeCompare(a.id)); return { items: rows.slice((query.page - 1) * query.pageSize, query.page * query.pageSize), total: rows.length, page: query.page, pageSize: query.pageSize }; }
-  async detail(type: 'automatic' | 'coupon', id: string) { const row = type === 'automatic' ? await this.db.promotion.findUnique({ where: { id } }) : await this.db.coupon.findUnique({ where: { id }, include: { products: true, categories: true, collections: true, _count: { select: { redemptions: true } } } }); if (!row) throw new NotFoundException({ code: 'PROMOTION_NOT_FOUND', message: 'Offer not found.' }); return { ...row, type: type.toUpperCase(), effectiveStatus: state(row, new Date(), type === 'automatic' ? 'endsAt' : 'expiresAt') }; }
+  async detail(type: 'automatic' | 'coupon', id: string) { const row = type === 'automatic' ? await this.db.promotion.findUnique({ where: { id }, include: { product: { select: { id: true, name: true, slug: true } }, category: { select: { id: true, name: true, slug: true } } } }) : await this.db.coupon.findUnique({ where: { id }, include: { products: true, categories: true, collections: true, _count: { select: { redemptions: true } } } }); if (!row) throw new NotFoundException({ code: 'PROMOTION_NOT_FOUND', message: 'Offer not found.' }); return { ...row, type: type.toUpperCase(), effectiveStatus: state(row, new Date(), type === 'automatic' ? 'endsAt' : 'expiresAt') }; }
   async options(query: { type: 'product' | 'category' | 'collection'; search?: string; page: number }) { const where = { ...(query.search ? { name: { contains: query.search, mode: 'insensitive' as const } } : {}) }; const page = { skip: (query.page - 1) * 30, take: 30, orderBy: [{ name: 'asc' as const }, { id: 'asc' as const }] }; if (query.type === 'product') return this.db.product.findMany({ where: { ...where, status: { not: 'ARCHIVED' } }, select: { id: true, name: true, status: true, variants: { select: { id: true, sku: true, pricePaise: true } } }, ...page }); if (query.type === 'category') return this.db.category.findMany({ where: { ...where, deletedAt: null }, select: { id: true, name: true, parent: { select: { name: true } } }, ...page }); return this.db.collection.findMany({ where, select: { id: true, name: true }, ...page }); }
-  async create(input: any) { await this.check(input); try { if (input.type === 'AUTOMATIC') return this.db.promotion.create({ data: { name: input.name, kind: input.kind, amountPaise: input.amountPaise, percentBasisPoints: input.percentBasisPoints, startsAt: input.startsAt, endsAt: input.endsAt, productId: input.productId, categoryId: input.categoryId, lifecycle: 'DRAFT' } }); return this.db.coupon.create({ data: { name: input.name, code: normalize(input.code), scope: input.scope, kind: input.kind, amountPaise: input.amountPaise, percentBasisPoints: input.percentBasisPoints, startsAt: input.startsAt, expiresAt: input.expiresAt, minimumCartPaise: input.minimumCartPaise, usageLimit: input.usageLimit, perCustomerLimit: input.perCustomerLimit, allowStacking: input.allowStacking, lifecycle: 'DRAFT', products: { create: (input.productIds ?? []).map((productId: string) => ({ productId })) }, categories: { create: (input.categoryIds ?? []).map((categoryId: string) => ({ categoryId })) }, collections: { create: (input.collectionIds ?? []).map((collectionId: string) => ({ collectionId })) } } }); } catch (error) { if ((error as { code?: string }).code === 'P2002') throw new ConflictException({ code: 'COUPON_CODE_EXISTS', message: 'This coupon code is already used.' }); throw error; } }
+  async create(input: any) {
+    await this.check(input);
+    try {
+      if (input.type === 'AUTOMATIC') {
+        const lifecycle = input.lifecycle ?? 'DRAFT';
+        const created = await this.db.promotion.create({
+          data: {
+            name: input.name,
+            kind: input.kind,
+            amountPaise: input.amountPaise,
+            percentBasisPoints: input.percentBasisPoints,
+            startsAt: input.startsAt,
+            endsAt: input.endsAt,
+            productId: input.productId,
+            categoryId: input.categoryId,
+            lifecycle,
+            enabled: lifecycle === 'PUBLISHED',
+          },
+        });
+        if (input.shareWithVerifiedCustomers && (input.productId || input.categoryId) && lifecycle === 'PUBLISHED') {
+          void this.mailService.sendPromotionCampaign(created.id).catch(() => undefined);
+        }
+        return created;
+      }
+      return this.db.coupon.create({ data: { name: input.name, code: normalize(input.code), scope: input.scope, kind: input.kind, amountPaise: input.amountPaise, percentBasisPoints: input.percentBasisPoints, startsAt: input.startsAt, expiresAt: input.expiresAt, minimumCartPaise: input.minimumCartPaise, usageLimit: input.usageLimit, perCustomerLimit: input.perCustomerLimit, allowStacking: input.allowStacking, lifecycle: 'DRAFT', products: { create: (input.productIds ?? []).map((productId: string) => ({ productId })) }, categories: { create: (input.categoryIds ?? []).map((categoryId: string) => ({ categoryId })) }, collections: { create: (input.collectionIds ?? []).map((collectionId: string) => ({ collectionId })) } } });
+    } catch (error) {
+      if ((error as { code?: string }).code === 'P2002') throw new ConflictException({ code: 'COUPON_CODE_EXISTS', message: 'This coupon code is already used.' });
+      throw error;
+    }
+  }
   async update(type: 'automatic' | 'coupon', id: string, input: any) { const old: any = await this.detail(type, id); const merged = { ...old, ...input, type: type === 'automatic' ? 'AUTOMATIC' : 'COUPON' }; await this.check(merged); try { if (type === 'automatic') { const { name, kind, amountPaise, percentBasisPoints, startsAt, endsAt, productId, categoryId } = input; return this.db.promotion.update({ where: { id }, data: { name, kind, amountPaise, percentBasisPoints, startsAt, endsAt, productId, categoryId } }); } const { name, code, kind, amountPaise, percentBasisPoints, startsAt, expiresAt, minimumCartPaise, usageLimit, perCustomerLimit, allowStacking, scope } = input; return this.db.coupon.update({ where: { id }, data: { name, code: code === undefined ? undefined : normalize(code), kind, amountPaise, percentBasisPoints, startsAt, expiresAt, minimumCartPaise, usageLimit, perCustomerLimit, allowStacking, scope, ...(input.productIds !== undefined ? { products: { deleteMany: {}, create: input.productIds.map((productId: string) => ({ productId })) } } : {}), ...(input.categoryIds !== undefined ? { categories: { deleteMany: {}, create: input.categoryIds.map((categoryId: string) => ({ categoryId })) } } : {}), ...(input.collectionIds !== undefined ? { collections: { deleteMany: {}, create: input.collectionIds.map((collectionId: string) => ({ collectionId })) } } : {}) } }); } catch (error) { if ((error as { code?: string }).code === 'P2002') throw new ConflictException({ code: 'COUPON_CODE_EXISTS', message: 'This coupon code is already used.' }); throw error; } }
   async lifecycle(type: 'automatic' | 'coupon', id: string, action: 'publish' | 'pause' | 'resume' | 'end') { const old: any = await this.detail(type, id); if (action === 'resume' && old.lifecycle === 'ENDED') throw bad('An ended offer cannot be resumed.'); const data = action === 'end' ? { lifecycle: 'ENDED', enabled: false } : action === 'pause' ? { lifecycle: 'PAUSED', enabled: false } : { lifecycle: 'PUBLISHED', enabled: true }; return type === 'automatic' ? this.db.promotion.update({ where: { id }, data }) : this.db.coupon.update({ where: { id }, data }); }
   async quote(input: any) {
