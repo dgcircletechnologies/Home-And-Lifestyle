@@ -3,13 +3,14 @@ import { randomUUID } from 'node:crypto';
 import type { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma.service';
 import { RazorpayClient } from './razorpay-client';
+import { OrderMailService } from '../orders/order-mail.service';
 
 type Attempt = { id: string; orderId: string; providerOrderId: string | null; amountPaise: number; currency: string; status: string; providerPaymentId: string | null };
 class StockUnavailable extends Error {}
 
 @Injectable()
 export class CustomerPaymentsService {
-  constructor(private readonly db: PrismaService, private readonly razorpay: RazorpayClient) {}
+  constructor(private readonly db: PrismaService, private readonly razorpay: RazorpayClient, private readonly orderMail?: OrderMailService) {}
 
   private async ownedAttempt(userId: string, orderId: string, providerOrderId: string) {
     const user = await this.db.user.findUnique({ where: { id: userId }, select: { customerId: true } });
@@ -27,12 +28,20 @@ export class CustomerPaymentsService {
     }
     const providerPayment = await this.razorpay.payment(input.razorpayPaymentId);
     if (providerPayment.order_id !== attempt.providerOrderId || providerPayment.amount !== attempt.amountPaise || providerPayment.currency !== attempt.currency || providerPayment.status !== 'captured') throw new ConflictException({ code: 'PAYMENT_NOT_CAPTURED', message: 'Payment is awaiting gateway confirmation. Check your order status shortly.' });
-    return this.finalize(attempt, providerPayment.id, input.razorpaySignature);
+    const result = await this.finalize(attempt, providerPayment.id, input.razorpaySignature);
+    if (result.status === 'PAID' && !result.replayed && this.orderMail) {
+      void this.orderMail.sendOrderConfirmation(result.orderId);
+    }
+    return result;
   }
 
   async fail(userId: string, input: { orderId: string; razorpayOrderId: string; code?: string; reason?: string }) {
     const attempt = await this.ownedAttempt(userId, input.orderId, input.razorpayOrderId);
-    return this.markFailed(attempt, input.code ?? 'CHECKOUT_DISMISSED', input.reason ?? 'Payment was not completed.');
+    const result = await this.markFailed(attempt, input.code ?? 'CHECKOUT_DISMISSED', input.reason ?? 'Payment was not completed.');
+    if (result.status === 'FAILED' && !result.replayed && this.orderMail) {
+      void this.orderMail.sendPaymentFailed(result.orderId, { code: input.code, reason: input.reason });
+    }
+    return result;
   }
 
   private async markFailed(attempt: Attempt, code: string, reason: string) {
@@ -41,13 +50,14 @@ export class CustomerPaymentsService {
       const order = await tx.order.findUnique({ where: { id: attempt.orderId }, include: { payments: true } });
       const current = order?.payments.find(row => row.id === attempt.id);
       if (!order || !current) throw new NotFoundException('Payment attempt not found.');
-      if (current.status === 'SUCCEEDED' || order.status === 'NEW') return { orderId: order.id, status: 'PAID' };
-      if (order.status === 'PAYMENT_EXCEPTION') return { orderId: order.id, status: 'EXCEPTION' };
+      if (current.status === 'SUCCEEDED' || order.status === 'NEW') return { orderId: order.id, status: 'PAID', replayed: true };
+      if (order.status === 'PAYMENT_EXCEPTION') return { orderId: order.id, status: 'EXCEPTION', replayed: true };
       if (current.status !== 'FAILED') {
         await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: 'FAILED', failureCode: code.slice(0, 100), failureReason: reason.slice(0, 500) } });
         await tx.orderStatusHistory.create({ data: { orderId: order.id, previousStatus: order.status, status: order.status, action: 'payment_failed', paymentStatus: 'FAILED', actorType: 'SYSTEM', note: 'Payment was not completed. You can try again.', internalNote: `${code.slice(0, 100)}: ${reason.slice(0, 500)}` } });
+        return { orderId: order.id, status: 'FAILED', replayed: false };
       }
-      return { orderId: order.id, status: 'FAILED' };
+      return { orderId: order.id, status: 'FAILED', replayed: true };
     });
   }
 
@@ -127,12 +137,19 @@ export class CustomerPaymentsService {
     const attempt = await this.db.paymentAttempt.findFirst({ where: { provider: 'RAZORPAY', providerAccount: config.keyId, providerOrderId } });
     if (!attempt) { await this.db.paymentEvent.update({ where: { id: stored.id }, data: { processingError: 'Unknown provider order' } }); return { received: true, unmatched: true }; }
     try {
-      if (event.event === 'payment.failed') await this.markFailed(attempt, entity?.error_code ?? 'PAYMENT_FAILED', entity?.error_description ?? 'Payment failed.');
-      else {
+      if (event.event === 'payment.failed') {
+        const result = await this.markFailed(attempt, entity?.error_code ?? 'PAYMENT_FAILED', entity?.error_description ?? 'Payment failed.');
+        if (result.status === 'FAILED' && !result.replayed && this.orderMail) {
+          void this.orderMail.sendPaymentFailed(result.orderId, { code: entity?.error_code, reason: entity?.error_description });
+        }
+      } else {
         let payment = entity?.id ? await this.razorpay.payment(entity.id) : null;
         if (!payment) payment = (await this.razorpay.orderPayments(providerOrderId)).items.find(item => item.status === 'captured') ?? null;
         if (!payment || payment.status !== 'captured' || payment.order_id !== attempt.providerOrderId || payment.amount !== attempt.amountPaise || payment.currency !== attempt.currency) throw new ConflictException('Captured payment details do not match this order.');
-        await this.finalize(attempt, payment.id);
+        const result = await this.finalize(attempt, payment.id);
+        if (result.status === 'PAID' && !result.replayed && this.orderMail) {
+          void this.orderMail.sendOrderConfirmation(result.orderId);
+        }
       }
       await this.db.paymentEvent.update({ where: { id: stored.id }, data: { processedAt: new Date(), processingError: null } });
       return { received: true };

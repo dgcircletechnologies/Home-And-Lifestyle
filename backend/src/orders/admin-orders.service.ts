@@ -3,6 +3,7 @@ import type { PaymentStatus, Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma.service';
 import { period } from '../dashboard/period';
 import { completeHistory } from './status-history';
+import { OrderMailService } from './order-mail.service';
 
 const customer = { select: { name: true, email: true } } as const;
 const paymentFields = { id: true, orderId: true, provider: true, providerPaymentId: true, amountPaise: true, currency: true, status: true, failureCode: true, createdAt: true, updatedAt: true } as const;
@@ -10,11 +11,11 @@ const paymentDto = (row: { id: string; orderId: string; provider: string; provid
 const safeAddress = (value: unknown) => { if (!value || typeof value !== 'object' || Array.isArray(value)) return null; const source = value as Record<string, unknown>; return Object.fromEntries(['recipient', 'line1', 'line2', 'city', 'state', 'pinCode', 'countryCode', 'phone'].filter(key => typeof source[key] === 'string').map(key => [key, source[key]])); };
 @Injectable()
 export class AdminOrdersService {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly db: PrismaService, private readonly orderMail?: OrderMailService) {}
   private next(status: string): string[] { return ({ NEW: ['accept', 'reject', 'hold', 'cancel'], ACCEPTED: ['process', 'hold', 'cancel'], PROCESSING: ['ready', 'dispatch', 'hold', 'cancel'], READY_TO_SHIP: ['dispatch', 'hold', 'cancel'], SHIPPED: ['deliver'], ON_HOLD: ['resume', 'cancel'] } as Record<string, string[]>)[status] ?? []; }
   async act(id: string, adminId: string, input: { action: 'accept' | 'reject' | 'hold' | 'resume' | 'process' | 'ready' | 'dispatch' | 'deliver' | 'cancel'; reason?: string; carrier?: string; trackingNumber?: string }) {
     if (['reject', 'hold', 'cancel'].includes(input.action) && !input.reason) throw new BadRequestException({ code: 'REASON_REQUIRED', message: 'A reason is required for this action.' });
-    return this.db.$transaction(async tx => {
+    const result = await this.db.$transaction(async tx => {
       await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext(${id}))`;
       const current = await tx.order.findUnique({ where: { id }, include: { lines: { select: { id: true, quantity: true } }, shipments: { include: { lines: true } }, statusHistory: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1 } } });
       if (!current) throw new NotFoundException({ code: 'ORDER_NOT_FOUND', message: 'Order not found.' });
@@ -41,6 +42,17 @@ export class AdminOrdersService {
       const event = await tx.orderStatusHistory.create({ data: { orderId: id, adminId, previousStatus: current.status, status: target, action: input.action, reason: input.reason, internalNote: input.reason, actorType: 'ADMIN', note: input.action === 'dispatch' && input.trackingNumber ? `Tracking number: ${input.trackingNumber}` : null, resumedFrom: input.action === 'hold' ? current.status : null } });
       return { id, status: saved.status, updatedAt: saved.updatedAt, allowedActions: this.next(saved.status), event, replayed: false };
     });
+    if (!result.replayed && this.orderMail) {
+      void this.orderMail.sendOrderStatusUpdate(id, {
+        action: input.action,
+        targetStatus: result.status,
+        eventId: result.event?.id,
+        carrier: input.carrier,
+        trackingNumber: input.trackingNumber,
+        customerNote: result.event?.note,
+      });
+    }
+    return result;
   }
   async listOrders(query: { page: number; pageSize: number; search?: string; status?: string; paymentStatus?: PaymentStatus; from?: Date; to?: Date }) {
     const base: Prisma.OrderWhereInput = { ...(query.search ? { OR: [{ orderNumber: { contains: query.search, mode: 'insensitive' } }, { email: { contains: query.search, mode: 'insensitive' } }, { customer: { name: { contains: query.search, mode: 'insensitive' } } }] } : {}), ...(query.paymentStatus ? { payments: { some: { status: query.paymentStatus } } } : {}), ...((query.from || query.to) ? { createdAt: { ...(query.from ? { gte: query.from } : {}), ...(query.to ? { lte: query.to } : {}) } } : {}) };
