@@ -146,6 +146,7 @@ interface SeedProduct {
   giftWrapEligible: boolean;
   videoUrl?: string | null;
   showInHomeVideoShowcase?: boolean;
+  showInHeroCarousel?: boolean;
   images: { url: string; altText: string }[];
   variants: {
     sku: string;
@@ -162,6 +163,7 @@ const productsData: SeedProduct[] = [
   {
     name: 'Aura Handwoven Lounge Chair',
     slug: 'aura-handwoven-lounge-chair',
+    showInHeroCarousel: true,
     description: 'Sculptural lounge chair featuring an FSC-certified solid ash frame and handwoven Danish cord seat.',
     story: 'Designed in collaboration with craftspersons in Saharanpur, blending Nordic restraint with traditional Indian cord weaving.',
     categorySlug: 'living-room',
@@ -188,6 +190,7 @@ const productsData: SeedProduct[] = [
   {
     name: 'Brutalist Solid Teak Coffee Table',
     slug: 'brutalist-solid-teak-coffee-table',
+    showInHeroCarousel: true,
     description: 'Low-profile circular coffee table hand-turned from reclaimed Burma teak with natural oil polish.',
     story: 'Heavy architectural block geometry inspired by Chandigarh modernist heritage and honest timber grain.',
     categorySlug: 'living-room',
@@ -211,6 +214,7 @@ const productsData: SeedProduct[] = [
   {
     name: 'Komorebi Fluted Brass Wall Sconce',
     slug: 'komorebi-fluted-brass-wall-sconce',
+    showInHeroCarousel: true,
     description: 'Architectural wall luminaire casting indirect upward and downward radiance through fluted brass fins.',
     story: 'Translating the poetic Japanese concept of dappled light filtering through tree canopies into warm interior illumination.',
     categorySlug: 'living-room',
@@ -237,6 +241,7 @@ const productsData: SeedProduct[] = [
   {
     name: 'Kyoto Stoneware Dinner Set',
     slug: 'kyoto-stoneware-dinner-set',
+    showInHeroCarousel: true,
     description: 'Sixteen-piece complete dining service in reactive dual-tone matte ochre and speckled cream glaze.',
     story: 'Fired at 1280°C in Khurja kilns for exceptional chip resistance, tactile matte exterior, and glossy food-safe interior.',
     categorySlug: 'kitchen-and-dining',
@@ -954,6 +959,7 @@ async function main() {
           giftWrapEligible: p.giftWrapEligible,
           videoUrl: p.videoUrl ?? null,
           showInHomeVideoShowcase: Boolean(p.showInHomeVideoShowcase && p.videoUrl),
+          showInHeroCarousel: Boolean(p.showInHeroCarousel),
           materials: p.materials,
           dimensions: p.dimensions,
           careInstructions: p.careInstructions,
@@ -968,6 +974,7 @@ async function main() {
           giftWrapEligible: p.giftWrapEligible,
           videoUrl: p.videoUrl ?? null,
           showInHomeVideoShowcase: Boolean(p.showInHomeVideoShowcase && p.videoUrl),
+          showInHeroCarousel: Boolean(p.showInHeroCarousel),
           materials: p.materials,
           dimensions: p.dimensions,
           careInstructions: p.careInstructions,

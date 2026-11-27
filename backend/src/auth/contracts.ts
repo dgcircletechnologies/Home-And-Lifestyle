@@ -9,6 +9,9 @@ export const emailBody = z.object({ email: emailSchema }).strict();
 export const tokenBody = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).strict();
 export function parse<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
-  if (!result.success) throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Please check the submitted fields.', fields: z.flattenError(result.error).fieldErrors });
+  if (!result.success) {
+    const { fieldErrors, formErrors } = z.flattenError(result.error);
+    throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Please check the submitted fields.', fields: { ...fieldErrors, ...(formErrors.length ? { _form: formErrors } : {}) } });
+  }
   return result.data;
 }

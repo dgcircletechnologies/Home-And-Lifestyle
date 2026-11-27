@@ -16,6 +16,7 @@ model Product {
   videoUrl                 String?
   videoPublicId            String?
   showInHomeVideoShowcase  Boolean                @default(false)
+  showInHeroCarousel      Boolean                @default(false)
   attributes               ProductAttribute[]
   customisationDefinitions ProductCustomisation[]
   reviews                  Review[]
@@ -43,6 +44,7 @@ model Product {
 
   @@index([status, isFeatured])
   @@index([status, showInHomeVideoShowcase])
+  @@index([status, showInHeroCarousel])
 }
 
 model ProductVariant {

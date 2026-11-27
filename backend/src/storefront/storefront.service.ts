@@ -7,9 +7,9 @@ import { activeAutomaticPromotionWhere } from '../promotions/public-promotion';
 
 const activeCollection = (now: Date): Prisma.CollectionWhereInput => ({ AND: [{ OR: [{ startsAt: null }, { startsAt: { lte: now } }] }, { OR: [{ endsAt: null }, { endsAt: { gt: now } }] }] });
 const productSelect = {
-  id: true, name: true, slug: true, description: true, story: true, materials: true, dimensions: true, careInstructions: true, isFeatured: true, giftWrapEligible: true, videoUrl: true, showInHomeVideoShowcase: true, createdAt: true,
+  id: true, name: true, slug: true, description: true, story: true, materials: true, dimensions: true, careInstructions: true, isFeatured: true, giftWrapEligible: true, videoUrl: true, showInHomeVideoShowcase: true, showInHeroCarousel: true, createdAt: true,
   attributes: { select: { key: true, textValue: true, numericValue: true, unit: true } },
-  tags: { select: { tag: { select: { name: true } } } },
+  tags: { select: { tag: { select: { name: true, slug: true } } } },
   collections: { select: { collection: { select: { name: true } } } },
   images: { orderBy: [{ position: 'asc' as const }, { id: 'asc' as const }], take: 2, select: { url: true, altText: true } },
   variants: { orderBy: { pricePaise: 'asc' as const }, select: { id: true, sku: true, pricePaise: true, compareAtPricePaise: true, stockQuantity: true, optionCombinationKey: true, attributes: true, dimensions: true } },
@@ -37,13 +37,13 @@ export class StorefrontService {
       return { id: variant.id, sku: variant.sku, pricePaise: variant.pricePaise, effectivePricePaise: variant.pricePaise - discount, compareAtPricePaise: discount ? variant.pricePaise : null, stockQuantity: variant.stockQuantity, attributes: variant.attributes ?? [], dimensions: variant.dimensions, optionCombinationKey: variant.optionCombinationKey, available: variant.stockQuantity > 0 };
     }).sort((a, b) => a.effectivePricePaise - b.effectivePricePaise || a.id.localeCompare(b.id));
     const cheapest = variants[0];
-    return { id: row.id, name: row.name, slug: row.slug, description: row.description, story: row.story, isFeatured: row.isFeatured, giftWrapEligible: row.giftWrapEligible,
+    return { id: row.id, name: row.name, slug: row.slug, description: row.description, story: row.story, isFeatured: row.isFeatured, showInHeroCarousel: row.showInHeroCarousel, giftWrapEligible: row.giftWrapEligible,
       image: row.images[0] ?? null, primaryImage: row.images[0] ?? null, secondaryImage: row.images[1] ?? null, images: row.images, videoUrl: row.videoUrl, minPricePaise: cheapest?.effectivePricePaise ?? null, maxPricePaise: variants.at(-1)?.effectivePricePaise ?? null,
       compareAtPricePaise: cheapest?.compareAtPricePaise ?? null, variantCount: variants.length,
       available: row.variants.some((variant: { stockQuantity: number }) => variant.stockQuantity > 0),
       variants, materials: row.materials, dimensions: row.dimensions, careInstructions: row.careInstructions,
       attributes: row.attributes.map(attribute => ({ key: attribute.key, value: attribute.textValue ?? (attribute.numericValue === null ? null : `${attribute.numericValue}${attribute.unit ? ` ${attribute.unit}` : ''}`) })).filter(attribute => attribute.value),
-      tags: row.tags.map(link => link.tag.name), collections: row.collections.map(link => link.collection.name),
+      tags: row.tags.map(link => link.tag).sort((a, b) => Number(b.slug === 'new-arrival') - Number(a.slug === 'new-arrival') || a.name.localeCompare(b.name)).map(tag => tag.name), collections: row.collections.map(link => link.collection.name),
       categories: row.categories.map((link: { category: { name: string; slug: string } }) => link.category) };
   }
   async navigation() {
@@ -108,7 +108,7 @@ export class StorefrontService {
   async home() {
     const now = new Date();
     const visible = await this.publicProductWhere();
-    const [categories, featured, latest, giftable, collections, shop, offers, pricing, videoProducts] = await Promise.all([
+    const [categories, featured, latest, giftable, collections, shop, offers, pricing, videoProducts, flaggedHeroProducts] = await Promise.all([
       this.directory(),
       this.db.product.findMany({ where: { ...visible, isFeatured: true, variants: { some: {} } }, select: productSelect, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 8 }),
       this.db.product.findMany({ where: { ...visible, variants: { some: {} } }, select: productSelect, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 8 }),
@@ -118,8 +118,10 @@ export class StorefrontService {
       this.offers(now),
       this.priceRules(),
       this.db.product.findMany({ where: { ...visible, showInHomeVideoShowcase: true, videoUrl: { not: null }, variants: { some: {} } }, select: productSelect, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 8 }),
+      this.db.product.findMany({ where: { ...visible, showInHeroCarousel: true, images: { some: {} }, variants: { some: {} } }, select: productSelect, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }] }),
     ]);
-    return { categories, videoProducts: videoProducts.filter(row => row.videoUrl?.trim()).map(row => this.card(row, pricing)), featured: featured.map(row => this.card(row, pricing)), latest: latest.map(row => this.card(row, pricing)), giftable: giftable.map(row => this.card(row, pricing)), collections: collections.map(row => ({ name: row.name, slug: row.slug, description: row.description, products: row.products.map(link => this.card(link.product, pricing)) })), categoryRows: shop.categoryRows ?? [], offers };
+    const fallbackHeroProducts = flaggedHeroProducts.length ? [] : await this.db.product.findMany({ where: { ...visible, images: { some: {} }, variants: { some: {} } }, select: productSelect, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 4 });
+    return { categories, heroProducts: (flaggedHeroProducts.length ? flaggedHeroProducts : fallbackHeroProducts).map(row => this.card(row, pricing)), videoProducts: videoProducts.filter(row => row.videoUrl?.trim()).map(row => this.card(row, pricing)), featured: featured.map(row => this.card(row, pricing)), latest: latest.map(row => this.card(row, pricing)), giftable: giftable.map(row => this.card(row, pricing)), collections: collections.map(row => ({ name: row.name, slug: row.slug, description: row.description, products: row.products.map(link => this.card(link.product, pricing)) })), categoryRows: shop.categoryRows ?? [], offers };
   }
   async products(input: { category?: string; collection?: string; search?: string; giftable?: 'true'; page: number }) {
     const visible = await this.publicProductWhere();
