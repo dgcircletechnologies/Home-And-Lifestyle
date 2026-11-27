@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const primary = { url: '/images/auth-interior.png', altText: 'Primary scene' };
 const secondary = { url: '/images/home-hero-placeholder.png', altText: 'Secondary scene' };
-const product = { id: 'p1', name: 'Motion Vase', slug: 'motion-vase', description: 'A vase.', story: null, image: primary, primaryImage: primary, secondaryImage: secondary, images: [primary, secondary], videoUrl: 'https://example.test/video.webm', minPricePaise: 99000, maxPricePaise: 99000, compareAtPricePaise: null, variantCount: 1, available: true, isFeatured: true, giftWrapEligible: false, categories: [{ name: 'Decor', slug: 'decor' }], variants: [{ id: 'v1', sku: 'VASE-1', pricePaise: 99000, effectivePricePaise: 99000, compareAtPricePaise: null, stockQuantity: 3, attributes: [], dimensions: null, optionCombinationKey: '[]', available: true }] };
+const product = { id: 'p1', name: 'Motion Vase', slug: 'motion-vase', description: 'A vase.', story: null, tags: ['Handcrafted', 'Limited Edition'], image: primary, primaryImage: primary, secondaryImage: secondary, images: [primary, secondary], videoUrl: 'https://example.test/video.webm', minPricePaise: 99000, maxPricePaise: 99000, compareAtPricePaise: null, variantCount: 1, available: true, isFeatured: true, giftWrapEligible: false, categories: [{ name: 'Decor', slug: 'decor' }], variants: [{ id: 'v1', sku: 'VASE-1', pricePaise: 99000, effectivePricePaise: 99000, compareAtPricePaise: null, stockQuantity: 3, attributes: [], dimensions: null, optionCombinationKey: '[]', available: true }] };
 const category = { id: 'c1', name: 'Decor', slug: 'decor', parentId: null, image: primary, primaryImage: primary, secondaryImage: secondary };
 const home = { categories: [category], featured: [product], latest: [product], giftable: [], collections: [], categoryRows: [], offers: [], videoProducts: Array.from({ length: 4 }, (_, index) => ({ ...product, id: `p${index}`, slug: `motion-vase-${index}` })) };
 
@@ -30,10 +30,14 @@ test('homepage media section, card hover, and PDP gallery work on desktop and mo
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(motion.locator('video').first()).toHaveCSS('display', 'none');
   await page.goto('/products/motion-vase');
+  await expect(page.locator('.store-pdp-tags span')).toHaveText(['Handcrafted', 'Limited Edition']);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(page.getByRole('button', { name: 'Show image 1' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Show image 2' })).toBeVisible();
   await page.getByRole('button', { name: 'Show product video' }).click();
   await expect(page.getByRole('region', { name: 'Motion Vase gallery' }).locator('video')).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.locator('.store-pdp-tags span')).toHaveText(['Handcrafted', 'Limited Edition']);
 });
 
 test('homepage omits the motion section when no product is selected', async ({ page }) => {

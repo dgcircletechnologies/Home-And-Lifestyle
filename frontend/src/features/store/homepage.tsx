@@ -1,11 +1,11 @@
 'use client';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { catalog, productHref, type StoreHome } from './catalog';
 import { CategoryTile, ProductCard, ProductImage } from './storefront-ui';
 import { HomeOffersStrip, offerBadge } from './home-offers';
+import { HomeHeroCarousel } from './home-hero-carousel';
 
 export function Homepage() {
   const [data,setData]=useState<StoreHome>(),[loading,setLoading]=useState(true),[error,setError]=useState('');
@@ -14,7 +14,6 @@ export function Homepage() {
   if(loading)return <div className="store-home store-home-loading" role="status"><div className="store-hero-skeleton"/><div className="store-section"><p>Preparing the shop…</p></div></div>;
   if(error)return <div className="store-home store-empty"><h1>We could not open the shop.</h1><p>{error}</p><button className="store-home-cta" onClick={load}>Try again</button></div>;
   if(!data)return null;
-  const hero=data.featured.find(p=>p.image)??data.latest.find(p=>p.image)??data.latest[0];
   const categories=data.categories.filter(c=>!c.parentId).slice(0,6);
   const products=(data.featured.length?data.featured:data.latest).slice(0,4);
   const edit=data.collections.find(item=>!/gift/i.test(item.name));
@@ -24,7 +23,7 @@ export function Homepage() {
   const categoryRows=data.categories.map(category=>({category,products:data.categoryRows?.find(row=>row.slug===category.slug)?.products??[]})).filter(row=>row.products.length);
   const offers=data.offers??[];
   const categoryOffers=new Map(offers.filter(offer=>offer.targetType==='CATEGORY').map(offer=>[offer.targetId,offer]));
-  return <div className="store-home"><section className="store-hero" aria-labelledby="home-title"><div className="store-hero-copy"><p className="store-kicker">The Home &amp; Lifestyle edit</p><h1 id="home-title">A little more <em>you</em> in every room.</h1><p>Color, character, and useful details for the spaces you make your own.</p><Link className="store-cta store-home-cta" href={hero?productHref(hero):'/shop'}>{hero?'Discover the featured piece':'Explore the shop'}<ArrowRight size={19}/></Link></div><div className="store-hero-art"><Image src="/images/home-hero-placeholder.png" alt="A sunlit living room with a sculptural lamp, cushions, and a ceramic vase" fill priority sizes="(max-width: 700px) 100vw, 55vw"/><span className="store-hero-caption">A corner to make your own</span></div></section>
+  return <div className="store-home"><HomeHeroCarousel products={data.heroProducts ?? data.latest.filter(product => product.primaryImage ?? product.image).slice(0,4)}/>
     <HomeOffersStrip offers={offers}/>
     {categories.length>0&&<section className="store-section store-categories" aria-labelledby="categories-title"><div className="store-section-heading"><div><p className="store-kicker">Find your corner</p><h2 id="categories-title">Shop by category</h2></div><Link href="/shop" className="store-text-link store-home-cta">Explore all categories <ArrowRight size={19}/></Link></div><div className="store-category-grid" role="region" aria-label="Shop by category cards" tabIndex={0}>{categories.map(category=><CategoryTile key={category.id} category={category} offerLabel={categoryOffers.get(category.id)?offerBadge(categoryOffers.get(category.id)!):undefined}/>)}</div></section>}
     {Boolean(data.videoProducts?.length)&&<section className="store-section store-motion" aria-labelledby="motion-title"><div className="store-section-heading"><div><p className="store-kicker">See it in your space</p><h2 id="motion-title">Shop in Motion</h2></div><Link href="/shop" className="store-text-link store-home-cta">Shop all <ArrowRight size={17}/></Link></div><div className="store-product-grid" role="region" aria-label="Shop in Motion products" tabIndex={0}>{data.videoProducts!.map(product=><ProductCard key={product.id} product={product} video/>)}</div></section>}

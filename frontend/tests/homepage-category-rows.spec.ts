@@ -26,8 +26,8 @@ test('homepage keeps editorial sections and shows shared category cards in deskt
   await page.route('**/api/storefront/home', route => route.fulfill({ json: home }));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'A little more you in every room.' })).toBeVisible();
-  await expect.poll(() => page.locator('.store-hero-art img').evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect(page.getByRole('heading', { name: 'Kitchen piece 5' })).toBeVisible();
+  await expect.poll(() => page.locator('.store-hero-carousel img').first().evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   await expect(page.getByRole('link', { name: 'Explore all categories' })).toHaveCSS('border-bottom-width', '0px');
   await expect(page.locator('.store-edit')).toBeVisible();
   await expect(page.locator('.store-home-category-row')).toHaveCount(3);
@@ -36,7 +36,7 @@ test('homepage keeps editorial sections and shows shared category cards in deskt
   const order = await page.locator('.store-edit, .store-home-category-row, .store-gifting').evaluateAll(elements => elements.map(element => element.classList.contains('store-edit') ? 'edit' : element.classList.contains('store-gifting') ? 'gifting' : 'row'));
   expect(order).toEqual(['edit', 'row', 'row', 'row', 'gifting']);
   await expect(page.locator('.store-home-category-row .store-product-grid').first()).toHaveCSS('display', 'grid');
-  const ctas = page.locator('.store-home-cta');
+  const ctas = page.locator('.store-home-cta:not([tabindex="-1"])');
   await expect(ctas).toHaveCount(8);
   const styles = await ctas.evaluateAll(elements => elements.map(element => ({ background: getComputedStyle(element).backgroundColor, image: getComputedStyle(element).backgroundImage, text: getComputedStyle(element).color, border: getComputedStyle(element).borderBottomWidth, radius: getComputedStyle(element).borderRadius })));
   expect(new Set(styles.map(style => style.background)).size).toBe(1);
