@@ -212,6 +212,7 @@ const sharedEmailHead = (subject: string) => `
     table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
     td, th { word-break: break-word; overflow-wrap: anywhere; }
     @media only screen and (max-width: 600px) {
+      .email-headline { font-size: 19px !important; line-height: 1.3 !important; }
       .email-card { width: 100% !important; max-width: 100% !important; border-radius: 8px !important; }
       .email-outer-td { padding: 12px 8px 32px !important; }
       .email-header-td { padding: 16px 16px 12px !important; }
@@ -219,7 +220,7 @@ const sharedEmailHead = (subject: string) => `
       .email-footer-td { padding: 16px 16px !important; }
       .mobile-header-stack { display: block !important; width: 100% !important; text-align: left !important; padding-bottom: 6px !important; }
       .mobile-header-badge { display: block !important; width: 100% !important; text-align: left !important; padding-top: 4px !important; }
-      .mobile-btn { display: block !important; width: 100% !important; text-align: center !important; padding: 14px 16px !important; }
+      .mobile-btn { display: block !important; width: 100% !important; text-align: center !important; padding: 10px 16px !important; }
       .price-breakdown-spacer { display: none !important; width: 0 !important; max-width: 0 !important; font-size: 0 !important; line-height: 0 !important; }
       .price-breakdown-cell { display: block !important; width: 100% !important; }
     }
@@ -317,7 +318,7 @@ export function orderConfirmationEmail(data: OrderConfirmationEmailData) {
         ? `<div style="margin-top:4px;font-size:12px;color:#8c531b;font-weight:600;word-break:break-word;overflow-wrap:anywhere;">&#127873; Gift Wrapped${line.giftMessage ? `: <em>&ldquo;${escapeHtml(line.giftMessage)}&rdquo;</em>` : ''}</div>`
         : '';
       return `<tr>
-        <td style="padding:12px 8px;border-bottom:1px solid #f0eae1;font-size:14px;color:#24221f;vertical-align:top;width:72%;word-break:break-word;overflow-wrap:anywhere;">
+        <td style="padding:12px 8px;border-bottom:1px solid #f0eae1;font-size:13px;color:#24221f;vertical-align:top;width:72%;word-break:break-word;overflow-wrap:anywhere;">
           <div style="font-weight:600;color:#24221f;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(line.productName)}</div>
           ${line.variantName && line.variantName !== 'Default' ? `<div style="font-size:12px;color:#615955;margin-top:2px;word-break:break-word;overflow-wrap:anywhere;">Variant: ${escapeHtml(line.variantName)}</div>` : ''}
           ${line.sku ? `<div style="font-size:11px;color:#766e65;margin-top:2px;font-family:monospace;word-break:break-word;overflow-wrap:anywhere;">SKU: ${escapeHtml(line.sku)}</div>` : ''}
@@ -327,7 +328,7 @@ export function orderConfirmationEmail(data: OrderConfirmationEmailData) {
           </div>
           ${giftWrapTag}
         </td>
-        <td align="right" style="padding:12px 8px;border-bottom:1px solid #f0eae1;font-size:14px;font-weight:600;color:#24221f;vertical-align:top;width:28%;font-variant-numeric:tabular-nums;white-space:nowrap;">
+        <td align="right" style="padding:12px 8px;border-bottom:1px solid #f0eae1;font-size:13px;font-weight:600;color:#24221f;vertical-align:top;width:28%;font-variant-numeric:tabular-nums;white-space:nowrap;">
           ${escapeHtml(formatInr(line.totalPaise))}
         </td>
       </tr>`;
@@ -350,7 +351,7 @@ export function orderConfirmationEmail(data: OrderConfirmationEmailData) {
   const giftCallout = data.orderGiftMessage
     ? `<div style="background:#faf6f0;border-left:3px solid #8c531b;padding:12px 16px;margin:20px 0;border-radius:4px;word-break:break-word;overflow-wrap:anywhere;">
         <div style="font-size:12px;font-weight:700;color:#8c531b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">&#127873; Personal Gift Message</div>
-        <div style="font-size:14px;line-height:20px;color:#433e3c;font-style:italic;">&ldquo;${escapeHtml(data.orderGiftMessage)}&rdquo;</div>
+        <div style="font-size:13px;line-height:20px;color:#433e3c;font-style:italic;">&ldquo;${escapeHtml(data.orderGiftMessage)}&rdquo;</div>
       </div>`
     : '';
 
@@ -368,7 +369,7 @@ ${sharedEmailHead(subject)}
             <td class="email-header-td" style="padding:20px 24px 16px;border-bottom:1px solid #e4ded5;background:#ffffff;box-sizing:border-box;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
                 <tr>
-                  <td class="mobile-header-stack" style="font-size:20px;font-weight:700;letter-spacing:-0.5px;color:#4d2946;vertical-align:middle;">
+                  <td class="mobile-header-stack" style="font-size:17px;font-weight:700;letter-spacing:-0.3px;color:#4d2946;vertical-align:middle;">
                     ${escapeHtml(storeName)}
                   </td>
                   <td class="mobile-header-badge" align="right" style="vertical-align:middle;">
@@ -384,11 +385,11 @@ ${sharedEmailHead(subject)}
           <!-- Main Content -->
           <tr>
             <td class="email-body-td" style="padding:28px 24px 24px;box-sizing:border-box;">
-              <p style="margin:0 0 12px;font-size:15px;line-height:22px;color:#24221f;">${escapeHtml(greeting)}</p>
-              <h1 style="margin:0 0 12px;font-size:24px;line-height:30px;letter-spacing:-0.5px;color:#24221f;">
+              <p style="margin:0 0 12px;font-size:14px;line-height:21px;color:#24221f;">${escapeHtml(greeting)}</p>
+              <h1 class="email-headline" style="margin:0 0 12px;font-size:21px;line-height:27px;letter-spacing:-0.5px;color:#24221f;">
                 Thank you for your order!
               </h1>
-              <p style="margin:0 0 20px;font-size:14px;line-height:22px;color:#514a47;">
+              <p style="margin:0 0 20px;font-size:14px;line-height:21px;color:#514a47;">
                 We have received your payment and confirmed your order. We are preparing your pieces with care and will notify you as soon as your package ships.
               </p>
 
@@ -473,14 +474,14 @@ ${sharedEmailHead(subject)}
               ${addressHtml ? `
               <div style="background:#fcfbf8;border:1px solid #ebe6df;border-radius:8px;padding:14px 16px;margin-bottom:24px;word-break:break-word;overflow-wrap:anywhere;box-sizing:border-box;">
                 <div style="font-size:12px;font-weight:700;color:#615955;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Shipping Address</div>
-                <div style="font-size:14px;line-height:22px;color:#433e3c;word-break:break-word;overflow-wrap:anywhere;">${addressHtml}</div>
+                <div style="font-size:13px;line-height:20px;color:#433e3c;word-break:break-word;overflow-wrap:anywhere;">${addressHtml}</div>
               </div>` : ''}
 
               <!-- Track Order CTA Button -->
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;margin-bottom:20px;">
                 <tr>
                   <td align="center">
-                    <a href="${escapeHtml(trackUrl)}" class="mobile-btn" style="background:#4d2946;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:700;display:inline-block;max-width:100%;box-sizing:border-box;box-shadow:0 2px 6px rgba(77,41,70,0.25);">
+                    <a href="${escapeHtml(trackUrl)}" class="mobile-btn" style="background:#4d2946;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;display:inline-block;max-width:100%;box-sizing:border-box;box-shadow:0 2px 6px rgba(77,41,70,0.25);">
                       Track Your Order
                     </a>
                   </td>
@@ -496,7 +497,7 @@ ${sharedEmailHead(subject)}
 
           <!-- Store Footer -->
           <tr>
-            <td class="email-footer-td" style="padding:20px 24px;background:#f8f5ee;border-top:1px solid #e4ded5;font-size:13px;line-height:20px;color:#615955;box-sizing:border-box;word-break:break-word;overflow-wrap:anywhere;">
+            <td class="email-footer-td" style="padding:20px 24px;background:#f8f5ee;border-top:1px solid #e4ded5;font-size:12px;line-height:18px;color:#615955;box-sizing:border-box;word-break:break-word;overflow-wrap:anywhere;">
               <p style="margin:0 0 6px;font-weight:600;color:#24221f;">The ${escapeHtml(storeName)} Team</p>
               ${data.supportEmail ? `<p style="margin:0 0 4px;word-break:break-word;overflow-wrap:anywhere;">Questions or changes? Email us at <a href="mailto:${escapeHtml(data.supportEmail)}" style="color:#4d2946;font-weight:600;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(data.supportEmail)}</a></p>` : ''}
               ${data.supportPhone ? `<p style="margin:0 0 4px;">Call us: ${escapeHtml(data.supportPhone)}</p>` : ''}
@@ -559,7 +560,7 @@ ${sharedEmailHead(subject)}
             <td class="email-header-td" style="padding:20px 24px 16px;border-bottom:1px solid #e4ded5;background:#ffffff;box-sizing:border-box;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
                 <tr>
-                  <td class="mobile-header-stack" style="font-size:20px;font-weight:700;letter-spacing:-0.5px;color:#4d2946;vertical-align:middle;">
+                  <td class="mobile-header-stack" style="font-size:17px;font-weight:700;letter-spacing:-0.3px;color:#4d2946;vertical-align:middle;">
                     ${escapeHtml(storeName)}
                   </td>
                   <td class="mobile-header-badge" align="right" style="vertical-align:middle;">
@@ -575,18 +576,18 @@ ${sharedEmailHead(subject)}
           <!-- Main Content -->
           <tr>
             <td class="email-body-td" style="padding:28px 24px 24px;box-sizing:border-box;">
-              <p style="margin:0 0 12px;font-size:15px;line-height:22px;color:#24221f;">${escapeHtml(greeting)}</p>
-              <h1 style="margin:0 0 12px;font-size:24px;line-height:30px;letter-spacing:-0.4px;color:#24221f;">
+              <p style="margin:0 0 12px;font-size:14px;line-height:21px;color:#24221f;">${escapeHtml(greeting)}</p>
+              <h1 class="email-headline" style="margin:0 0 12px;font-size:21px;line-height:27px;letter-spacing:-0.4px;color:#24221f;">
                 Your payment didn’t go through
               </h1>
-              <p style="margin:0 0 18px;font-size:14px;line-height:22px;color:#514a47;">
+              <p style="margin:0 0 18px;font-size:14px;line-height:21px;color:#514a47;">
                 Don’t worry—your order has been saved and is currently awaiting payment. No charges were made to your account.
               </p>
 
               <!-- Reason Notice -->
               <div style="background:#fdf7f6;border-left:3px solid #c94c36;padding:12px 14px;margin-bottom:22px;border-radius:4px;word-break:break-word;overflow-wrap:anywhere;box-sizing:border-box;">
                 <div style="font-size:12px;font-weight:700;color:#9c2d1b;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Status Notice</div>
-                <div style="font-size:14px;line-height:20px;color:#59261d;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(failureReason)}</div>
+                <div style="font-size:13px;line-height:20px;color:#59261d;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(failureReason)}</div>
               </div>
 
               <!-- Order Summary Callout -->
@@ -615,7 +616,7 @@ ${sharedEmailHead(subject)}
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;margin-bottom:20px;">
                 <tr>
                   <td align="center">
-                    <a href="${escapeHtml(retryUrl)}" class="mobile-btn" style="background:#4d2946;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:700;display:inline-block;max-width:100%;box-sizing:border-box;box-shadow:0 2px 6px rgba(77,41,70,0.25);">
+                    <a href="${escapeHtml(retryUrl)}" class="mobile-btn" style="background:#4d2946;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;display:inline-block;max-width:100%;box-sizing:border-box;box-shadow:0 2px 6px rgba(77,41,70,0.25);">
                       Retry Payment
                     </a>
                   </td>
@@ -631,7 +632,7 @@ ${sharedEmailHead(subject)}
 
           <!-- Store Footer -->
           <tr>
-            <td class="email-footer-td" style="padding:20px 24px;background:#f8f5ee;border-top:1px solid #e4ded5;font-size:13px;line-height:20px;color:#615955;box-sizing:border-box;word-break:break-word;overflow-wrap:anywhere;">
+            <td class="email-footer-td" style="padding:20px 24px;background:#f8f5ee;border-top:1px solid #e4ded5;font-size:12px;line-height:18px;color:#615955;box-sizing:border-box;word-break:break-word;overflow-wrap:anywhere;">
               <p style="margin:0 0 6px;font-weight:600;color:#24221f;">The ${escapeHtml(storeName)} Team</p>
               ${data.supportEmail ? `<p style="margin:0 0 4px;word-break:break-word;overflow-wrap:anywhere;">Questions or need help? <a href="mailto:${escapeHtml(data.supportEmail)}" style="color:#4d2946;font-weight:600;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(data.supportEmail)}</a></p>` : ''}
               ${data.supportPhone ? `<p style="margin:0 0 4px;">Call us: ${escapeHtml(data.supportPhone)}</p>` : ''}
@@ -743,7 +744,7 @@ export function orderStatusUpdateEmail(data: OrderStatusUpdateEmailData) {
   const customerNoteHtml = data.customerNote
     ? `<div style="background:#faf8f5;border-left:3px solid #4d2946;padding:12px 14px;margin:18px 0;border-radius:4px;word-break:break-word;overflow-wrap:anywhere;box-sizing:border-box;">
         <div style="font-size:12px;font-weight:700;color:#4d2946;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Update Note</div>
-        <div style="font-size:14px;line-height:20px;color:#433e3c;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(data.customerNote)}</div>
+        <div style="font-size:13px;line-height:20px;color:#433e3c;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(data.customerNote)}</div>
       </div>`
     : '';
 
@@ -761,7 +762,7 @@ ${sharedEmailHead(subject)}
             <td class="email-header-td" style="padding:20px 24px 16px;border-bottom:1px solid #e4ded5;background:#ffffff;box-sizing:border-box;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
                 <tr>
-                  <td class="mobile-header-stack" style="font-size:20px;font-weight:700;letter-spacing:-0.5px;color:#4d2946;vertical-align:middle;">
+                  <td class="mobile-header-stack" style="font-size:17px;font-weight:700;letter-spacing:-0.3px;color:#4d2946;vertical-align:middle;">
                     ${escapeHtml(storeName)}
                   </td>
                   <td class="mobile-header-badge" align="right" style="vertical-align:middle;">
@@ -777,11 +778,11 @@ ${sharedEmailHead(subject)}
           <!-- Main Content -->
           <tr>
             <td class="email-body-td" style="padding:28px 24px 24px;box-sizing:border-box;">
-              <p style="margin:0 0 12px;font-size:15px;line-height:22px;color:#24221f;">${escapeHtml(greeting)}</p>
-              <h1 style="margin:0 0 12px;font-size:24px;line-height:30px;letter-spacing:-0.4px;color:#24221f;">
+              <p style="margin:0 0 12px;font-size:14px;line-height:21px;color:#24221f;">${escapeHtml(greeting)}</p>
+              <h1 class="email-headline" style="margin:0 0 12px;font-size:21px;line-height:27px;letter-spacing:-0.4px;color:#24221f;">
                 ${escapeHtml(meta.headline)}
               </h1>
-              <p style="margin:0 0 18px;font-size:14px;line-height:22px;color:#514a47;">
+              <p style="margin:0 0 18px;font-size:14px;line-height:21px;color:#514a47;">
                 ${escapeHtml(meta.description)}
               </p>
 
@@ -814,7 +815,7 @@ ${sharedEmailHead(subject)}
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;margin-bottom:20px;">
                 <tr>
                   <td align="center">
-                    <a href="${escapeHtml(orderUrl)}" class="mobile-btn" style="background:#4d2946;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:700;display:inline-block;max-width:100%;box-sizing:border-box;box-shadow:0 2px 6px rgba(77,41,70,0.25);">
+                    <a href="${escapeHtml(orderUrl)}" class="mobile-btn" style="background:#4d2946;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;display:inline-block;max-width:100%;box-sizing:border-box;box-shadow:0 2px 6px rgba(77,41,70,0.25);">
                       View Order &amp; Status History
                     </a>
                   </td>
@@ -829,7 +830,7 @@ ${sharedEmailHead(subject)}
 
           <!-- Store Footer -->
           <tr>
-            <td class="email-footer-td" style="padding:20px 24px;background:#f8f5ee;border-top:1px solid #e4ded5;font-size:13px;line-height:20px;color:#615955;box-sizing:border-box;word-break:break-word;overflow-wrap:anywhere;">
+            <td class="email-footer-td" style="padding:20px 24px;background:#f8f5ee;border-top:1px solid #e4ded5;font-size:12px;line-height:18px;color:#615955;box-sizing:border-box;word-break:break-word;overflow-wrap:anywhere;">
               <p style="margin:0 0 6px;font-weight:600;color:#24221f;">The ${escapeHtml(storeName)} Team</p>
               ${data.supportEmail ? `<p style="margin:0 0 4px;word-break:break-word;overflow-wrap:anywhere;">Have questions? Contact us at <a href="mailto:${escapeHtml(data.supportEmail)}" style="color:#4d2946;font-weight:600;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(data.supportEmail)}</a></p>` : ''}
               ${data.supportPhone ? `<p style="margin:0 0 4px;">Phone: ${escapeHtml(data.supportPhone)}</p>` : ''}

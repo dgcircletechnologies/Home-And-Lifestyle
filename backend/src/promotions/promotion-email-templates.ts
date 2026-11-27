@@ -96,6 +96,7 @@ const sharedEmailHead = (subject: string) => `
     td, th { word-break: break-word; overflow-wrap: anywhere; }
     img { border: 0; outline: none; text-decoration: none; display: block; max-width: 100%; }
     @media only screen and (max-width: 600px) {
+      .email-headline { font-size: 19px !important; line-height: 1.3 !important; }
       .email-card { width: 100% !important; max-width: 100% !important; border-radius: 8px !important; }
       .email-outer-td { padding: 12px 8px 32px !important; }
       .email-header-td { padding: 16px 16px 12px !important; }
@@ -103,7 +104,7 @@ const sharedEmailHead = (subject: string) => `
       .email-body-td { padding: 20px 16px !important; }
       .email-footer-td { padding: 16px 16px !important; }
       .mobile-full-width { display: block !important; width: 100% !important; }
-      .mobile-btn { display: block !important; width: 100% !important; text-align: center !important; padding: 14px 16px !important; }
+      .mobile-btn { display: block !important; width: 100% !important; text-align: center !important; padding: 10px 16px !important; }
       .mobile-product-card { display: block !important; width: 100% !important; margin-bottom: 12px !important; }
     }
   </style>
@@ -173,12 +174,12 @@ export function categoryPromotionEmail(data: CategoryPromotionEmailData): { subj
               </td>
               ` : ''}
               <td valign="middle" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-                <a href="${escapeHtml(itemUrl)}" target="_blank" style="text-decoration: none; color: #1c1917; font-size: 15px; font-weight: 600; line-height: 1.3; display: block; margin-bottom: 6px;">
+                <a href="${escapeHtml(itemUrl)}" target="_blank" style="text-decoration: none; color: #1c1917; font-size: 13px; font-weight: 600; line-height: 1.4; display: block; margin-bottom: 6px;">
                   ${escapeHtml(item.name)}
                 </a>
                 <div style="font-size: 14px; line-height: 1.4;">
-                  <span style="font-size: 16px; font-weight: 700; color: #28613a; margin-right: 8px;">${escapeHtml(disc)}</span>
-                  ${orig !== disc ? `<span style="font-size: 13px; color: #78716c; text-decoration: line-through; margin-right: 8px;">${escapeHtml(orig)}</span>` : ''}
+                  <span style="font-size: 14px; font-weight: 700; color: #28613a; font-variant-numeric: tabular-nums; margin-right: 8px;">${escapeHtml(disc)}</span>
+                  ${orig !== disc ? `<span style="font-size: 13px; font-variant-numeric: tabular-nums; color: #78716c; text-decoration: line-through; margin-right: 8px;">${escapeHtml(orig)}</span>` : ''}
                   ${savingLabel ? `<span style="display: inline-block; font-size: 11px; font-weight: 700; color: #28613a; background-color: #eaf5ee; border: 1px solid #b8dfc4; padding: 2px 6px; border-radius: 4px;">${escapeHtml(savingLabel)}</span>` : ''}
                 </div>
                 <div style="margin-top: 8px;">
@@ -210,12 +211,12 @@ ${sharedEmailHead(subject)}
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td valign="middle">
-                    <span style="font-family: Georgia, 'Times New Roman', serif; font-size: 22px; font-weight: 700; color: #2a1215; letter-spacing: -0.01em;">
+                    <span style="font-family: Georgia, 'Times New Roman', serif; font-size: 17px; font-weight: 700; color: #2a1215; letter-spacing: -0.01em;">
                       ${escapeHtml(storeName)}
                     </span>
                   </td>
                   <td align="right" valign="middle">
-                    <span style="display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #28613a; background-color: #eaf5ee; border: 1px solid #b8dfc4; border-radius: 9999px; padding: 5px 12px;">
+                    <span style="display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #28613a; background-color: #eaf5ee; border: 1px solid #b8dfc4; border-radius: 9999px; padding: 4px 10px;">
                       ${escapeHtml(data.discountBadge)}
                     </span>
                   </td>
@@ -232,12 +233,12 @@ ${sharedEmailHead(subject)}
                 Special Category Offer
               </p>
               
-              <h1 style="margin: 0 0 12px; font-family: Georgia, 'Times New Roman', serif; font-size: 28px; line-height: 1.25; font-weight: 700; color: #2a1215;">
+              <h1 class="email-headline" style="margin: 0 0 12px; font-family: Georgia, 'Times New Roman', serif; font-size: 21px; line-height: 1.3; font-weight: 700; color: #2a1215;">
                 ${escapeHtml(data.discountBadge)} on ${escapeHtml(data.category.name)}
               </h1>
 
               ${data.category.description ? `
-              <p style="margin: 0 auto 16px; max-width: 480px; font-size: 15px; line-height: 1.5; color: #57534e;">
+              <p style="margin: 0 auto 16px; max-width: 480px; font-size: 14px; line-height: 1.5; color: #57534e;">
                 ${escapeHtml(data.category.description)}
               </p>
               ` : ''}
@@ -258,7 +259,7 @@ ${sharedEmailHead(subject)}
 
               <!-- Primary CTA -->
               <div style="margin: 20px 0 10px;">
-                <a href="${escapeHtml(categoryUrl)}" target="_blank" class="mobile-btn" style="display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; font-weight: 700; color: #ffffff; background-color: #2a1215; text-decoration: none; border-radius: 10px; padding: 14px 28px; letter-spacing: 0.02em; box-shadow: 0 2px 8px rgba(42, 18, 21, 0.2);">
+                <a href="${escapeHtml(categoryUrl)}" target="_blank" class="mobile-btn" style="display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 700; color: #ffffff; background-color: #2a1215; text-decoration: none; border-radius: 10px; padding: 10px 20px; letter-spacing: 0.02em; box-shadow: 0 2px 8px rgba(42, 18, 21, 0.2);">
                   Shop ${escapeHtml(data.category.name)} &rarr;
                 </a>
               </div>
@@ -270,7 +271,7 @@ ${sharedEmailHead(subject)}
           <tr>
             <td class="email-body-td" style="padding: 10px 28px 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
               <div style="border-top: 1px solid #f0e9df; padding-top: 24px; margin-bottom: 16px;">
-                <h2 style="margin: 0 0 14px; font-family: Georgia, 'Times New Roman', serif; font-size: 20px; font-weight: 700; color: #2a1215;">
+                <h2 style="margin: 0 0 14px; font-family: Georgia, 'Times New Roman', serif; font-size: 16px; font-weight: 700; color: #2a1215;">
                   Featured Pieces in this Collection
                 </h2>
               </div>
@@ -280,7 +281,7 @@ ${sharedEmailHead(subject)}
               </table>
 
               <div style="text-align: center; margin-top: 16px;">
-                <a href="${escapeHtml(categoryUrl)}" target="_blank" class="mobile-btn" style="display: inline-block; font-size: 14px; font-weight: 700; color: #2a1215; background-color: #f7f4ee; border: 1px solid #dfd6c8; text-decoration: none; border-radius: 8px; padding: 12px 24px;">
+                <a href="${escapeHtml(categoryUrl)}" target="_blank" class="mobile-btn" style="display: inline-block; font-size: 14px; font-weight: 700; color: #2a1215; background-color: #f7f4ee; border: 1px solid #dfd6c8; text-decoration: none; border-radius: 8px; padding: 10px 20px;">
                   View All Pieces in ${escapeHtml(data.category.name)} &rarr;
                 </a>
               </div>
@@ -372,12 +373,12 @@ ${sharedEmailHead(subject)}
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td valign="middle">
-                    <span style="font-family: Georgia, 'Times New Roman', serif; font-size: 22px; font-weight: 700; color: #2a1215; letter-spacing: -0.01em;">
+                    <span style="font-family: Georgia, 'Times New Roman', serif; font-size: 17px; font-weight: 700; color: #2a1215; letter-spacing: -0.01em;">
                       ${escapeHtml(storeName)}
                     </span>
                   </td>
                   <td align="right" valign="middle">
-                    <span style="display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #28613a; background-color: #eaf5ee; border: 1px solid #b8dfc4; border-radius: 9999px; padding: 5px 12px;">
+                    <span style="display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #28613a; background-color: #eaf5ee; border: 1px solid #b8dfc4; border-radius: 9999px; padding: 4px 10px;">
                       ${escapeHtml(data.discountBadge)}
                     </span>
                   </td>
@@ -394,12 +395,12 @@ ${sharedEmailHead(subject)}
                 Spotlight Deal
               </p>
               
-              <h1 style="margin: 0 0 12px; font-family: Georgia, 'Times New Roman', serif; font-size: 28px; line-height: 1.25; font-weight: 700; color: #2a1215;">
+              <h1 class="email-headline" style="margin: 0 0 12px; font-family: Georgia, 'Times New Roman', serif; font-size: 21px; line-height: 1.3; font-weight: 700; color: #2a1215;">
                 ${escapeHtml(data.product.name)}
               </h1>
 
               ${data.product.description ? `
-              <p style="margin: 0 auto 16px; max-width: 480px; font-size: 15px; line-height: 1.5; color: #57534e;">
+              <p style="margin: 0 auto 16px; max-width: 480px; font-size: 14px; line-height: 1.5; color: #57534e;">
                 ${escapeHtml(data.product.description)}
               </p>
               ` : ''}
@@ -413,13 +414,13 @@ ${sharedEmailHead(subject)}
               ` : ''}
 
               <!-- Price Box -->
-              <div style="display: inline-block; background-color: #fdfbf7; border: 1px solid #e7ded4; border-radius: 12px; padding: 16px 28px; margin-bottom: 20px;">
+              <div style="display: inline-block; background-color: #fdfbf7; border: 1px solid #e7ded4; border-radius: 12px; padding: 14px 20px; margin-bottom: 20px;">
                 <div style="font-size: 13px; font-weight: 600; color: #78716c; margin-bottom: 4px;">
                   ${escapeHtml(prefix)}Current Price
                 </div>
-                <div style="font-size: 26px; font-weight: 700; color: #28613a; line-height: 1.2;">
+                <div style="font-size: 18px; font-weight: 700; color: #28613a; font-variant-numeric: tabular-nums; line-height: 1.3;">
                   ${escapeHtml(discPrice)}
-                  ${origPrice !== discPrice ? `<span style="font-size: 17px; font-weight: 500; color: #78716c; text-decoration: line-through; margin-left: 10px;">${escapeHtml(origPrice)}</span>` : ''}
+                  ${origPrice !== discPrice ? `<span style="font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: #78716c; text-decoration: line-through; margin-left: 10px;">${escapeHtml(origPrice)}</span>` : ''}
                 </div>
                 ${savingsLabel ? `
                 <div style="margin-top: 6px;">
@@ -438,7 +439,7 @@ ${sharedEmailHead(subject)}
 
               <!-- CTA Button -->
               <div style="margin: 10px 0 10px;">
-                <a href="${escapeHtml(productUrl)}" target="_blank" class="mobile-btn" style="display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; font-weight: 700; color: #ffffff; background-color: #2a1215; text-decoration: none; border-radius: 10px; padding: 15px 36px; letter-spacing: 0.02em; box-shadow: 0 2px 8px rgba(42, 18, 21, 0.2);">
+                <a href="${escapeHtml(productUrl)}" target="_blank" class="mobile-btn" style="display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 700; color: #ffffff; background-color: #2a1215; text-decoration: none; border-radius: 10px; padding: 10px 20px; letter-spacing: 0.02em; box-shadow: 0 2px 8px rgba(42, 18, 21, 0.2);">
                   Shop This Deal &rarr;
                 </a>
               </div>
