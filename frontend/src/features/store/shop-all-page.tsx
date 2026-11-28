@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { StoreBreadcrumb } from '../../components/store-breadcrumb';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDownUp, Check, ChevronDown, SlidersHorizontal, X } from 'lucide-react';
@@ -161,7 +161,7 @@ export function ShopAllPage() {
     </section>;
   };
   return <div className="store-browse store-shop">
-    <div className="store-browse-intro"><nav aria-label="Breadcrumb"><Link href="/">Home</Link><span> / Shop All</span></nav><h1 ref={heading} tabIndex={-1}>Shop All</h1></div>
+    <div className="store-browse-intro"><StoreBreadcrumb current="Shop All"/><h1 ref={heading} tabIndex={-1}>Shop All</h1></div>
     <div className="shop-toolbar">
       <button ref={filterTrigger} type="button" onClick={() => openDrawer()}><SlidersHorizontal size={18}/><span>Filters</span>{active > 0 && <span className="shop-filter-count">{active}</span>}</button>
       <div ref={sortBox} className="shop-sort" onKeyDown={sortKey}>
